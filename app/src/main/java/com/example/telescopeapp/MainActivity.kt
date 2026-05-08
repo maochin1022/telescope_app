@@ -58,6 +58,13 @@ class MainActivity : AppCompatActivity() {
         // Set up the listeners for UI buttons
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
+
+        // Set up the listeners for zoom buttons
+        viewBinding.zoom05x.setOnClickListener { setZoom(0.5f) }
+        viewBinding.zoom1x.setOnClickListener { setZoom(1.0f) }
+        viewBinding.zoom2x.setOnClickListener { setZoom(2.0f) }
+        viewBinding.zoom32x.setOnClickListener { setZoom(3.2f) }
+        viewBinding.zoom5x.setOnClickListener { setZoom(5.0f) }
         
         // --- 核心修正 1：翻轉預覽畫面 ---
         // 直接將 PreviewView 旋轉 180 度，解決外接鏡頭造成的預覽顛倒
@@ -141,6 +148,14 @@ class MainActivity : AppCompatActivity() {
                         if (uiRotation != lastUiRotation) {
                             viewBinding.imageCaptureButton.animate().rotation(uiRotation).setDuration(300).start()
                             viewBinding.videoCaptureButton.animate().rotation(uiRotation).setDuration(300).start()
+                            
+                            // 旋轉焦段文字
+                            viewBinding.zoom05x.animate().rotation(uiRotation).setDuration(300).start()
+                            viewBinding.zoom1x.animate().rotation(uiRotation).setDuration(300).start()
+                            viewBinding.zoom2x.animate().rotation(uiRotation).setDuration(300).start()
+                            viewBinding.zoom32x.animate().rotation(uiRotation).setDuration(300).start()
+                            viewBinding.zoom5x.animate().rotation(uiRotation).setDuration(300).start()
+
                             lastUiRotation = uiRotation
                         }
                     }
@@ -261,6 +276,20 @@ class MainActivity : AppCompatActivity() {
         // 套用至 CameraControl 的實驗性 API (需視設備底層是否完全支援)
         // 注意：在正式的 CameraX 穩定版中，更簡單的方式是直接點擊畫面觸發 AutoFocus (startFocusAndMetering)
         // 手動滑桿距離在 CameraX 中被封裝得很深，這是一個示範呼叫
+    }
+
+    private fun setZoom(ratio: Float) {
+        cameraControl?.setZoomRatio(ratio)
+        
+        // 更新 UI 顏色 (模擬原生小米的紅色高亮)
+        val colorActive = android.graphics.Color.parseColor("#FF0000")
+        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+        
+        viewBinding.zoom05x.setTextColor(if (ratio == 0.5f) colorActive else colorInactive)
+        viewBinding.zoom1x.setTextColor(if (ratio == 1.0f) colorActive else colorInactive)
+        viewBinding.zoom2x.setTextColor(if (ratio == 2.0f) colorActive else colorInactive)
+        viewBinding.zoom32x.setTextColor(if (ratio == 3.2f) colorActive else colorInactive)
+        viewBinding.zoom5x.setTextColor(if (ratio == 5.0f) colorActive else colorInactive)
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
