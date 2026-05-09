@@ -39,65 +39,27 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/image_capture_button" />
 
-    <!-- 焦段切換列 -->
-    <LinearLayout
-        android:id="@+id/zoom_layout"
+    <!-- 動態鏡頭切換列 -->
+    <HorizontalScrollView
+        android:id="@+id/zoom_scroll_view"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_height="60dp"
         android:layout_marginBottom="30dp"
         android:background="@drawable/zoom_bg"
-        android:orientation="horizontal"
-        android:padding="8dp"
+        android:scrollbars="none"
         app:layout_constraintBottom_toTopOf="@id/image_capture_button"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <TextView
-            android:id="@+id/zoom_0_5x"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="0.5"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/zoom_1x"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="1x"
-            android:textColor="#FF0000"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/zoom_2x"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="2"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/zoom_3_2x"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="3.2"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/zoom_5x"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:gravity="center"
-            android:text="5"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp" />
-    </LinearLayout>
+        <LinearLayout
+            android:id="@+id/zoom_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:gravity="center_vertical" />
+    </HorizontalScrollView>
 
     <!-- 手動對焦滑桿 -->
     <com.google.android.material.slider.Slider

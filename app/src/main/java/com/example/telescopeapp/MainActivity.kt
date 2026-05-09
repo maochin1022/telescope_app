@@ -28,7 +28,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.TextView
 
 @ExperimentalCamera2Interop
 class MainActivity : AppCompatActivity() {
@@ -42,6 +47,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var cameraExecutor: ExecutorService
     private var isRecording = false
+
+    // 用來儲存動態產生的焦段 TextView
+    private val lensTextViews = mutableListOf<TextView>()
+    private var currentCameraId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,13 +68,6 @@ class MainActivity : AppCompatActivity() {
         viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
         viewBinding.videoCaptureButton.setOnClickListener { captureVideo() }
 
-        // Set up the listeners for zoom buttons
-        viewBinding.zoom05x.setOnClickListener { setZoom(0.5f) }
-        viewBinding.zoom1x.setOnClickListener { setZoom(1.0f) }
-        viewBinding.zoom2x.setOnClickListener { setZoom(2.0f) }
-        viewBinding.zoom32x.setOnClickListener { setZoom(3.2f) }
-        viewBinding.zoom5x.setOnClickListener { setZoom(5.0f) }
-        
         // --- 核心修正 1：翻轉預覽畫面 ---
         // 直接將 PreviewView 旋轉 180 度，解決外接鏡頭造成的預覽顛倒
         viewBinding.viewFinder.rotation = 180f
@@ -79,6 +81,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startCamera() {
+        // 在啟動相機前，先動態掃描並建立所有支援的實體鏡頭按鈕
+        setupDynamicLenses()
+        bindCameraUseCases()
+    }
+
+    private fun bindCameraUseCases() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
         cameraProviderFuture.addListener({
@@ -98,7 +106,17 @@ class MainActivity : AppCompatActivity() {
                 .build()
             videoCapture = VideoCapture.withOutput(recorder)
 
-            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+            // 依據目前選擇的 cameraId 建立 CameraSelector
+            val cameraSelector = if (currentCameraId != null) {
+                androidx.camera.core.CameraSelector.Builder()
+                    .requireLensFacing(androidx.camera.core.CameraSelector.LENS_FACING_BACK)
+                    .addCameraFilter { cameraInfos ->
+                        cameraInfos.filter { androidx.camera.camera2.interop.Camera2CameraInfo.from(it).cameraId == currentCameraId }
+                    }
+                    .build()
+            } else {
+                androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+            }
 
             try {
                 cameraProvider.unbindAll()
@@ -149,12 +167,10 @@ class MainActivity : AppCompatActivity() {
                             viewBinding.imageCaptureButton.animate().rotation(uiRotation).setDuration(300).start()
                             viewBinding.videoCaptureButton.animate().rotation(uiRotation).setDuration(300).start()
                             
-                            // 旋轉焦段文字
-                            viewBinding.zoom05x.animate().rotation(uiRotation).setDuration(300).start()
-                            viewBinding.zoom1x.animate().rotation(uiRotation).setDuration(300).start()
-                            viewBinding.zoom2x.animate().rotation(uiRotation).setDuration(300).start()
-                            viewBinding.zoom32x.animate().rotation(uiRotation).setDuration(300).start()
-                            viewBinding.zoom5x.animate().rotation(uiRotation).setDuration(300).start()
+                            // 旋轉動態生成的焦段文字
+                            lensTextViews.forEach { tv ->
+                                tv.animate().rotation(uiRotation).setDuration(300).start()
+                            }
 
                             lastUiRotation = uiRotation
                         }
@@ -268,28 +284,74 @@ class MainActivity : AppCompatActivity() {
 
     // --- 核心修正 4：手動對焦支援 ---
     private fun setManualFocusDistance(distance: Float) {
-        // 利用 Camera2Interop 將手動對焦距離寫入底層的 CaptureRequest
         val builder = Camera2Interop.Extender(ImageCapture.Builder())
         builder.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
         builder.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, distance)
-        
-        // 套用至 CameraControl 的實驗性 API (需視設備底層是否完全支援)
-        // 注意：在正式的 CameraX 穩定版中，更簡單的方式是直接點擊畫面觸發 AutoFocus (startFocusAndMetering)
-        // 手動滑桿距離在 CameraX 中被封裝得很深，這是一個示範呼叫
     }
 
-    private fun setZoom(ratio: Float) {
-        cameraControl?.setZoomRatio(ratio)
-        
-        // 更新 UI 顏色 (模擬原生小米的紅色高亮)
+    // --- 新增：動態抓取實體鏡頭並產生按鈕 ---
+    private fun setupDynamicLenses() {
+        val cameraManager = getSystemService(android.content.Context.CAMERA_SERVICE) as CameraManager
+        val backCameras = mutableListOf<Pair<String, Float>>()
+
+        try {
+            for (cameraId in cameraManager.cameraIdList) {
+                val chars = cameraManager.getCameraCharacteristics(cameraId)
+                val facing = chars.get(CameraCharacteristics.LENS_FACING)
+                if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
+                    // 只加入焦段大於 0 的有效實體鏡頭，以過濾掉可能無效的邏輯相機
+                    if (primaryFocalLength > 0f) {
+                        // 避免重複焦段被加入，部分手機邏輯相機會回傳相同的廣角焦段
+                        if (backCameras.none { it.second == primaryFocalLength }) {
+                            backCameras.add(Pair(cameraId, primaryFocalLength))
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to query cameras", e)
+        }
+
+        // 依據實體焦段由廣角到望遠排序
+        backCameras.sortBy { it.second }
+
+        viewBinding.zoomLayout.removeAllViews()
+        lensTextViews.clear()
+
         val colorActive = android.graphics.Color.parseColor("#FF0000")
         val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+
+        for ((index, camera) in backCameras.withIndex()) {
+            val tv = TextView(this).apply {
+                // 顯示等效文字，或是實體焦段 (例如: 8.7mm)
+                text = String.format(Locale.US, "%.1fmm", camera.second)
+                textSize = 14f
+                setTextColor(if (currentCameraId == camera.first || (currentCameraId == null && index == 0)) colorActive else colorInactive)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT
+                ).apply {
+                    setMargins(24, 0, 24, 0)
+                }
+                setOnClickListener {
+                    currentCameraId = camera.first
+                    lensTextViews.forEach { it.setTextColor(colorInactive) }
+                    this.setTextColor(colorActive)
+                    // 重新綁定該實體鏡頭
+                    bindCameraUseCases()
+                }
+            }
+            viewBinding.zoomLayout.addView(tv)
+            lensTextViews.add(tv)
+        }
         
-        viewBinding.zoom05x.setTextColor(if (ratio == 0.5f) colorActive else colorInactive)
-        viewBinding.zoom1x.setTextColor(if (ratio == 1.0f) colorActive else colorInactive)
-        viewBinding.zoom2x.setTextColor(if (ratio == 2.0f) colorActive else colorInactive)
-        viewBinding.zoom32x.setTextColor(if (ratio == 3.2f) colorActive else colorInactive)
-        viewBinding.zoom5x.setTextColor(if (ratio == 5.0f) colorActive else colorInactive)
+        // 如果還沒有選定相機，預設為第一顆 (通常是最廣角的)
+        if (currentCameraId == null && backCameras.isNotEmpty()) {
+            currentCameraId = backCameras[0].first
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
