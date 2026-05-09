@@ -34,8 +34,11 @@ import android.hardware.camera2.CaptureRequest
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.annotation.SuppressLint
 
+@androidx.annotation.OptIn(androidx.camera.core.ExperimentalPhysicalCamera::class)
 @ExperimentalCamera2Interop
+@SuppressLint("UnsafeOptInUsageError")
 class MainActivity : AppCompatActivity() {
 
     private lateinit var viewBinding: ActivityMainBinding
@@ -305,28 +308,24 @@ class MainActivity : AppCompatActivity() {
                 val chars = cameraManager.getCameraCharacteristics(logicalId)
                 val facing = chars.get(CameraCharacteristics.LENS_FACING)
                 if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    // 檢查這顆邏輯相機底下是否包含多顆實體鏡頭
                     val physicalIds = chars.physicalCameraIds
                     if (physicalIds.isNotEmpty()) {
+                        // 加入邏輯相機本身 (有時直接綁定邏輯相機會有不同的預設行為)
+                        val mainFocal = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 0f
+                        backCameras.add(Triple(logicalId, null, mainFocal))
+
+                        // 加入它底下的所有實體相機
                         for (physicalId in physicalIds) {
                             val pChars = cameraManager.getCameraCharacteristics(physicalId)
                             val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                             val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                            if (primaryFocalLength > 0f) {
-                                // 避免重複加入
-                                if (backCameras.none { it.third == primaryFocalLength }) {
-                                    backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
-                                }
-                            }
+                            backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
                         }
                     } else {
+                        // 只有獨立邏輯相機
                         val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                         val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                        if (primaryFocalLength > 0f) {
-                            if (backCameras.none { it.third == primaryFocalLength }) {
-                                backCameras.add(Triple(logicalId, null, primaryFocalLength))
-                            }
-                        }
+                        backCameras.add(Triple(logicalId, null, primaryFocalLength))
                     }
                 }
             }
@@ -334,8 +333,8 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Failed to query cameras", e)
         }
 
-        // 依據實體焦段由廣角到望遠排序
-        backCameras.sortBy { it.third }
+        // 依據邏輯 ID 與實體 ID 排序
+        backCameras.sortBy { it.first + (it.second ?: "") }
 
         viewBinding.zoomLayout.removeAllViews()
         lensTextViews.clear()
@@ -345,9 +344,10 @@ class MainActivity : AppCompatActivity() {
 
         for ((index, camera) in backCameras.withIndex()) {
             val tv = TextView(this).apply {
-                // 顯示實體焦段 (例如: 8.7mm)
-                text = String.format(Locale.US, "%.1fmm", camera.third)
-                textSize = 14f
+                // 顯示 ID 與焦段，方便除錯與盲測
+                val label = if (camera.second != null) "Phy${camera.second}" else "Log${camera.first}"
+                text = String.format(Locale.US, "%s\n%.1fmm", label, camera.third)
+                textSize = 12f
                 val isActive = (currentPhysicalCameraId == camera.second && currentLogicalCameraId == camera.first) || 
                                (currentPhysicalCameraId == null && currentLogicalCameraId == null && index == 0)
                 setTextColor(if (isActive) colorActive else colorInactive)
