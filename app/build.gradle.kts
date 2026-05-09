@@ -34,7 +34,7 @@ android {
 }
 
 dependencies {
-    val camerax_version = "1.3.0-alpha04"
+    val camerax_version = "1.3.2"
     implementation("androidx.camera:camera-camera2:${camerax_version}")
     implementation("androidx.camera:camera-lifecycle:${camerax_version}")
     implementation("androidx.camera:camera-video:${camerax_version}")

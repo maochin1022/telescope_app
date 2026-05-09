@@ -50,7 +50,8 @@ class MainActivity : AppCompatActivity() {
 
     // 用來儲存動態產生的焦段 TextView
     private val lensTextViews = mutableListOf<TextView>()
-    private var currentCameraId: String? = null
+    private var currentLogicalCameraId: String? = null
+    private var currentPhysicalCameraId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -107,16 +108,20 @@ class MainActivity : AppCompatActivity() {
             videoCapture = VideoCapture.withOutput(recorder)
 
             // 依據目前選擇的 cameraId 建立 CameraSelector
-            val cameraSelector = if (currentCameraId != null) {
-                androidx.camera.core.CameraSelector.Builder()
-                    .requireLensFacing(androidx.camera.core.CameraSelector.LENS_FACING_BACK)
-                    .addCameraFilter { cameraInfos ->
-                        cameraInfos.filter { androidx.camera.camera2.interop.Camera2CameraInfo.from(it).cameraId == currentCameraId }
-                    }
-                    .build()
-            } else {
-                androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+            val cameraSelectorBuilder = androidx.camera.core.CameraSelector.Builder()
+                .requireLensFacing(androidx.camera.core.CameraSelector.LENS_FACING_BACK)
+            
+            if (currentLogicalCameraId != null) {
+                cameraSelectorBuilder.addCameraFilter { cameraInfos ->
+                    cameraInfos.filter { androidx.camera.camera2.interop.Camera2CameraInfo.from(it).cameraId == currentLogicalCameraId }
+                }
             }
+            if (currentPhysicalCameraId != null) {
+                // 需要 CameraX 1.3.0+
+                cameraSelectorBuilder.setPhysicalCameraId(currentPhysicalCameraId!!)
+            }
+            
+            val cameraSelector = cameraSelectorBuilder.build()
 
             try {
                 cameraProvider.unbindAll()
@@ -292,20 +297,37 @@ class MainActivity : AppCompatActivity() {
     // --- 新增：動態抓取實體鏡頭並產生按鈕 ---
     private fun setupDynamicLenses() {
         val cameraManager = getSystemService(android.content.Context.CAMERA_SERVICE) as CameraManager
-        val backCameras = mutableListOf<Pair<String, Float>>()
+        // 儲存: Logical ID, Physical ID, 焦段
+        val backCameras = mutableListOf<Triple<String, String?, Float>>()
 
         try {
-            for (cameraId in cameraManager.cameraIdList) {
-                val chars = cameraManager.getCameraCharacteristics(cameraId)
+            for (logicalId in cameraManager.cameraIdList) {
+                val chars = cameraManager.getCameraCharacteristics(logicalId)
                 val facing = chars.get(CameraCharacteristics.LENS_FACING)
                 if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                    val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                    // 只加入焦段大於 0 的有效實體鏡頭，以過濾掉可能無效的邏輯相機
-                    if (primaryFocalLength > 0f) {
-                        // 避免重複焦段被加入，部分手機邏輯相機會回傳相同的廣角焦段
-                        if (backCameras.none { it.second == primaryFocalLength }) {
-                            backCameras.add(Pair(cameraId, primaryFocalLength))
+                    
+                    // 檢查這顆邏輯相機底下是否包含多顆實體鏡頭 (Android 9+)
+                    val physicalIds = chars.physicalCameraIds
+                    if (physicalIds.isNotEmpty()) {
+                        for (physicalId in physicalIds) {
+                            val pChars = cameraManager.getCameraCharacteristics(physicalId)
+                            val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                            val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
+                            if (primaryFocalLength > 0f) {
+                                // 避免重複加入
+                                if (backCameras.none { it.third == primaryFocalLength }) {
+                                    backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
+                                }
+                            }
+                        }
+                    } else {
+                        // 如果沒有封裝實體鏡頭，就把這顆邏輯相機本身當作實體鏡頭
+                        val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                        val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
+                        if (primaryFocalLength > 0f) {
+                            if (backCameras.none { it.third == primaryFocalLength }) {
+                                backCameras.add(Triple(logicalId, null, primaryFocalLength))
+                            }
                         }
                     }
                 }
@@ -315,7 +337,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // 依據實體焦段由廣角到望遠排序
-        backCameras.sortBy { it.second }
+        backCameras.sortBy { it.third }
 
         viewBinding.zoomLayout.removeAllViews()
         lensTextViews.clear()
@@ -325,10 +347,12 @@ class MainActivity : AppCompatActivity() {
 
         for ((index, camera) in backCameras.withIndex()) {
             val tv = TextView(this).apply {
-                // 顯示等效文字，或是實體焦段 (例如: 8.7mm)
-                text = String.format(Locale.US, "%.1fmm", camera.second)
+                // 顯示實體焦段 (例如: 8.7mm)
+                text = String.format(Locale.US, "%.1fmm", camera.third)
                 textSize = 14f
-                setTextColor(if (currentCameraId == camera.first || (currentCameraId == null && index == 0)) colorActive else colorInactive)
+                val isActive = (currentPhysicalCameraId == camera.second && currentLogicalCameraId == camera.first) || 
+                               (currentPhysicalCameraId == null && currentLogicalCameraId == null && index == 0)
+                setTextColor(if (isActive) colorActive else colorInactive)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -337,7 +361,8 @@ class MainActivity : AppCompatActivity() {
                     setMargins(24, 0, 24, 0)
                 }
                 setOnClickListener {
-                    currentCameraId = camera.first
+                    currentLogicalCameraId = camera.first
+                    currentPhysicalCameraId = camera.second
                     lensTextViews.forEach { it.setTextColor(colorInactive) }
                     this.setTextColor(colorActive)
                     // 重新綁定該實體鏡頭
@@ -349,8 +374,9 @@ class MainActivity : AppCompatActivity() {
         }
         
         // 如果還沒有選定相機，預設為第一顆 (通常是最廣角的)
-        if (currentCameraId == null && backCameras.isNotEmpty()) {
-            currentCameraId = backCameras[0].first
+        if (currentLogicalCameraId == null && backCameras.isNotEmpty()) {
+            currentLogicalCameraId = backCameras[0].first
+            currentPhysicalCameraId = backCameras[0].second
         }
     }
 
