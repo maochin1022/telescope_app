@@ -201,8 +201,9 @@ class MainActivity : AppCompatActivity() {
             previewRequestBuilder?.apply {
                 set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
                 
-                // --- 強制開啟防手震 ---
-                set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+                // --- 強制開啟光學防手震 (OIS) 並關閉數位防手震 (EIS) ---
+                // 數位防手震會與外接鏡頭的光學中心衝突，導致畫面異常抖動
+                set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
                 set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
 
                 // 手動對焦
