@@ -17,49 +17,85 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <Button
-        android:id="@+id/image_capture_button"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:layout_marginBottom="50dp"
-        android:background="@android:drawable/ic_menu_camera"
-        android:elevation="2dp"
+    <!-- 九宮格輔助線 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:weightSum="3"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent">
+        <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="@drawable/grid_box" />
+        <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="@drawable/grid_box" />
+        <View android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="@drawable/grid_box" />
+    </LinearLayout>
+    
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:weightSum="3"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/grid_box" />
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/grid_box" />
+        <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/grid_box" />
+    </LinearLayout>
+
+    <!-- 底部控制區 (半透明) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="180dp"
+        android:background="@drawable/bg_control_bar"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@id/video_capture_button"
-        app:layout_constraintStart_toStartOf="parent" />
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
-    <Button
-        android:id="@+id/video_capture_button"
-        android:layout_width="80dp"
-        android:layout_height="80dp"
-        android:layout_marginBottom="50dp"
-        android:background="@android:drawable/presence_video_online"
-        android:elevation="2dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/image_capture_button" />
-
-    <!-- 動態鏡頭切換列 -->
-    <HorizontalScrollView
-        android:id="@+id/zoom_scroll_view"
-        android:layout_width="wrap_content"
-        android:layout_height="60dp"
-        android:layout_marginBottom="30dp"
-        android:background="@drawable/zoom_bg"
-        android:scrollbars="none"
-        app:layout_constraintBottom_toTopOf="@id/image_capture_button"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent">
-
-        <LinearLayout
-            android:id="@+id/zoom_layout"
+        <!-- 動態鏡頭切換列 -->
+        <HorizontalScrollView
+            android:id="@+id/zoom_scroll_view"
             android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:gravity="center_vertical" />
-    </HorizontalScrollView>
+            android:layout_height="50dp"
+            android:layout_marginTop="16dp"
+            android:scrollbars="none"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <LinearLayout
+                android:id="@+id/zoom_layout"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+
+        <Button
+            android:id="@+id/image_capture_button"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:background="@drawable/bg_shutter_button"
+            android:elevation="4dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/zoom_scroll_view"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <ImageButton
+            android:id="@+id/video_capture_button"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?selectableItemBackgroundBorderless"
+            android:src="@android:drawable/presence_video_online"
+            android:scaleType="centerInside"
+            app:layout_constraintBottom_toBottomOf="@id/image_capture_button"
+            app:layout_constraintTop_toTopOf="@id/image_capture_button"
+            app:layout_constraintStart_toEndOf="@id/image_capture_button"
+            app:layout_constraintEnd_toEndOf="parent" />
+            
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- 手動對焦滑桿 -->
     <com.google.android.material.slider.Slider
@@ -70,6 +106,10 @@
         android:rotation="270"
         android:valueFrom="0.0"
         android:valueTo="10.0"
+        app:tickVisible="false"
+        app:thumbColor="#FFFFFF"
+        app:trackColorActive="#FFFFFF"
+        app:trackColorInactive="#80FFFFFF"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />

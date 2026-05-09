@@ -51,6 +51,16 @@ class MainActivity : AppCompatActivity() {
         viewBinding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(viewBinding.root)
 
+        // 全螢幕沉浸模式 (隱藏狀態列與導覽列)
+        window.decorView.systemUiVisibility = (
+            android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
+        )
+
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         if (allPermissionsGranted()) {
@@ -290,25 +300,39 @@ class MainActivity : AppCompatActivity() {
             viewBinding.zoomLayout.removeAllViews()
             lensTextViews.clear()
 
-            val colorActive = android.graphics.Color.parseColor("#FF0000")
-            val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+            val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
+            val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
+
+            // 依照用戶要求的標籤順序
+            val zoomLabels = listOf("0.5x", "1x", "2x", "3.2x", "5x")
 
             for ((index, camera) in backCameras.withIndex()) {
+                val labelText = zoomLabels.getOrNull(index) ?: String.format(Locale.US, "%.1fmm", camera.second)
+                
                 val tv = TextView(this).apply {
-                    text = String.format(Locale.US, "%s\n%.1fmm", camera.third, camera.second)
-                    textSize = 12f
+                    text = labelText
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    
                     val isActive = (currentCameraId == camera.first) || (currentCameraId == null && index == 0)
                     setTextColor(if (isActive) colorActive else colorInactive)
+                    setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
+                    
                     gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.MATCH_PARENT
-                    ).apply { setMargins(24, 0, 24, 0) }
+                    layoutParams = LinearLayout.LayoutParams(140, 90).apply { 
+                        setMargins(16, 0, 16, 0) 
+                    }
 
                     setOnClickListener {
                         currentCameraId = camera.first
-                        lensTextViews.forEach { it.setTextColor(colorInactive) }
+                        // 重置所有按鈕樣式
+                        lensTextViews.forEach { 
+                            it.setTextColor(colorInactive)
+                            it.setBackgroundResource(R.drawable.bg_pill_button)
+                        }
+                        // 設置當前按鈕樣式
                         this.setTextColor(colorActive)
+                        this.setBackgroundResource(R.drawable.bg_pill_button_active)
                         openCamera(currentCameraId!!)
                     }
                 }
