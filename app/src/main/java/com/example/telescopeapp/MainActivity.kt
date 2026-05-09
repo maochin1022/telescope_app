@@ -303,29 +303,39 @@ class MainActivity : AppCompatActivity() {
         val backCameras = mutableListOf<Triple<String, String?, Float>>()
 
         try {
-            for (logicalId in cameraManager.cameraIdList) {
-                val chars = cameraManager.getCameraCharacteristics(logicalId)
-                val facing = chars.get(CameraCharacteristics.LENS_FACING)
-                if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    val physicalIds = chars.physicalCameraIds
-                    if (physicalIds.isNotEmpty()) {
-                        // 加入邏輯相機本身 (有時直接綁定邏輯相機會有不同的預設行為)
-                        val mainFocal = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 0f
-                        backCameras.add(Triple(logicalId, null, mainFocal))
+            // 暴力掃描 0 到 15，因為很多廠商會隱藏長焦鏡頭不在 cameraIdList 裡
+            val potentialIds = (0..15).map { it.toString() }
+            for (logicalId in potentialIds) {
+                try {
+                    val chars = cameraManager.getCameraCharacteristics(logicalId)
+                    val facing = chars.get(CameraCharacteristics.LENS_FACING)
+                    if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                        val physicalIds = chars.physicalCameraIds
+                        if (physicalIds.isNotEmpty()) {
+                            // 加入邏輯相機本身
+                            val mainFocal = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull() ?: 0f
+                            backCameras.add(Triple(logicalId, null, mainFocal))
 
-                        // 加入它底下的所有實體相機
-                        for (physicalId in physicalIds) {
-                            val pChars = cameraManager.getCameraCharacteristics(physicalId)
-                            val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                            // 加入它底下的所有實體相機
+                            for (physicalId in physicalIds) {
+                                try {
+                                    val pChars = cameraManager.getCameraCharacteristics(physicalId)
+                                    val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                                    val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
+                                    backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
+                                } catch (e: Exception) {
+                                    // Ignore hidden physical sub-camera exceptions
+                                }
+                            }
+                        } else {
+                            // 只有獨立邏輯相機
+                            val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                             val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                            backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
+                            backCameras.add(Triple(logicalId, null, primaryFocalLength))
                         }
-                    } else {
-                        // 只有獨立邏輯相機
-                        val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                        val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                        backCameras.add(Triple(logicalId, null, primaryFocalLength))
                     }
+                } catch (e: Exception) {
+                    // 相機 ID 不存在或無權限存取，直接忽略
                 }
             }
         } catch (e: Exception) {
