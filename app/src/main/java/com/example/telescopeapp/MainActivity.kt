@@ -305,28 +305,17 @@ class MainActivity : AppCompatActivity() {
                 val chars = cameraManager.getCameraCharacteristics(logicalId)
                 val facing = chars.get(CameraCharacteristics.LENS_FACING)
                 if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                    
-                    // 檢查這顆邏輯相機底下是否包含多顆實體鏡頭 (Android 9+)
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
-                        val physicalIds = chars.physicalCameraIds
-                        if (physicalIds.isNotEmpty()) {
-                            for (physicalId in physicalIds) {
-                                val pChars = cameraManager.getCameraCharacteristics(physicalId)
-                                val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                                val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                                if (primaryFocalLength > 0f) {
-                                    // 避免重複加入
-                                    if (backCameras.none { it.third == primaryFocalLength }) {
-                                        backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
-                                    }
-                                }
-                            }
-                        } else {
-                            val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    // 檢查這顆邏輯相機底下是否包含多顆實體鏡頭
+                    val physicalIds = chars.physicalCameraIds
+                    if (physicalIds.isNotEmpty()) {
+                        for (physicalId in physicalIds) {
+                            val pChars = cameraManager.getCameraCharacteristics(physicalId)
+                            val focalLengths = pChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
                             val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
                             if (primaryFocalLength > 0f) {
+                                // 避免重複加入
                                 if (backCameras.none { it.third == primaryFocalLength }) {
-                                    backCameras.add(Triple(logicalId, null, primaryFocalLength))
+                                    backCameras.add(Triple(logicalId, physicalId, primaryFocalLength))
                                 }
                             }
                         }
