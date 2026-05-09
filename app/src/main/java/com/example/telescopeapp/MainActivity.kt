@@ -36,7 +36,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.annotation.SuppressLint
 
-@androidx.annotation.OptIn(androidx.camera.core.ExperimentalPhysicalCamera::class)
 @ExperimentalCamera2Interop
 @SuppressLint("UnsafeOptInUsageError")
 class MainActivity : AppCompatActivity() {
