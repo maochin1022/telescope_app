@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Size
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.Surface
@@ -43,8 +44,8 @@ class MainActivity : AppCompatActivity() {
     private var videoUri: android.net.Uri? = null
     private var mediaActionSound: android.media.MediaActionSound? = null
     private var lastMediaUri: android.net.Uri? = null
-    private var bestPreviewSize: android.util.Size? = null
-    private var bestJpegSize: android.util.Size? = null
+    private var bestPreviewSize: Size? = null
+    private var bestJpegSize: Size? = null
     private var supportedOisModes: IntArray? = null
     private var supportedAfModes: IntArray? = null
 
@@ -172,10 +173,9 @@ class MainActivity : AppCompatActivity() {
             if (map != null) {
                 val jpegSizes = map.getOutputSizes(ImageFormat.JPEG)
                 val previewSizes = map.getOutputSizes(SurfaceTexture::class.java)
+                val standard1080p = Size(1920, 1080)
                 
                 if (jpegSizes != null && previewSizes != null) {
-                    // 優先嘗試找標準 1080p (16:9)，這在大部分鏡頭上最穩定
-                    val standard1080p = android.util.Size(1920, 1080)
                     val has1080pPreview = previewSizes.contains(standard1080p)
                     val has1080pJpeg = jpegSizes.contains(standard1080p)
 
@@ -183,7 +183,6 @@ class MainActivity : AppCompatActivity() {
                         bestPreviewSize = standard1080p
                         bestJpegSize = standard1080p
                     } else {
-                        // 如果沒有標準 1080p，則尋找比例相近且預覽不超過 1080p 的最大解析度
                         val sortedJpegSizes = jpegSizes.sortedByDescending { it.width * it.height }
                         val safePreviewSizes = previewSizes.filter { it.width * it.height <= 1920 * 1080 }.sortedByDescending { it.width * it.height }
                         
@@ -207,8 +206,8 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
-                    bestJpegSize = android.util.Size(1280, 720)
-                    bestPreviewSize = android.util.Size(1280, 720)
+                    bestJpegSize = Size(1280, 720)
+                    bestPreviewSize = Size(1280, 720)
                 }
             }
         } catch (e: Exception) {
