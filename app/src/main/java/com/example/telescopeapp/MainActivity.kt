@@ -545,9 +545,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupDynamicLenses() {
         Thread {
             val backCameras = mutableListOf<Triple<String, Float, String>>()
-            val ids = try { cameraManager.cameraIdList } catch (e: Exception) { emptyArray<String>() }
+            val potentialIds = (0..15).map { it.toString() }
             
-            for (id in ids) {
+            for (id in potentialIds) {
                 try {
                     val chars = cameraManager.getCameraCharacteristics(id)
                     val facing = chars.get(CameraCharacteristics.LENS_FACING)
