@@ -71,6 +71,9 @@ class MainActivity : AppCompatActivity() {
             or android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
         )
 
+        // 保持螢幕長亮，防止相機開啟時系統自動變暗或休眠
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
 
         if (allPermissionsGranted()) {
