@@ -613,7 +613,8 @@ class MainActivity : AppCompatActivity() {
             if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
                 openCamera(currentCameraId!!)
             }
-        }.start()
+            } // end runOnUiThread
+        }.start() // end Thread
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
