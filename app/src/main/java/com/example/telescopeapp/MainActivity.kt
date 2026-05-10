@@ -219,29 +219,30 @@ class MainActivity : AppCompatActivity() {
         
         // 給硬體一點時間釋放上一個鏡頭，避免切換太快造成 Configuration Failed
         backgroundHandler?.postDelayed({
-            try {
-                if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return@postDelayed
-                cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-                    override fun onOpened(camera: CameraDevice) {
-                        Log.d(TAG, "Camera $cameraId opened")
-                        cameraDevice = camera
-                        createCameraPreviewSession()
-                    }
-                    override fun onDisconnected(camera: CameraDevice) {
-                        Log.w(TAG, "Camera $cameraId disconnected")
-                        camera.close()
-                        cameraDevice = null
-                    }
-                    override fun onError(camera: CameraDevice, error: Int) {
-                        Log.e(TAG, "Camera $cameraId error: $error")
-                        camera.close()
-                        cameraDevice = null
-                        runOnUiThread { Toast.makeText(this@MainActivity, "鏡頭啟動失敗 (代碼: $error)", Toast.LENGTH_SHORT).show() }
-                    }
-                }, backgroundHandler)
-            } catch (e: Exception) {
-                Log.e(TAG, "Cannot open camera $cameraId", e)
-                runOnUiThread { Toast.makeText(this@MainActivity, "無法開啟相機", Toast.LENGTH_SHORT).show() }
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                try {
+                    cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                        override fun onOpened(camera: CameraDevice) {
+                            Log.d(TAG, "Camera $cameraId opened")
+                            cameraDevice = camera
+                            createCameraPreviewSession()
+                        }
+                        override fun onDisconnected(camera: CameraDevice) {
+                            Log.w(TAG, "Camera $cameraId disconnected")
+                            camera.close()
+                            cameraDevice = null
+                        }
+                        override fun onError(camera: CameraDevice, error: Int) {
+                            Log.e(TAG, "Camera $cameraId error: $error")
+                            camera.close()
+                            cameraDevice = null
+                            runOnUiThread { Toast.makeText(this@MainActivity, "鏡頭啟動失敗 (代碼: $error)", Toast.LENGTH_SHORT).show() }
+                        }
+                    }, backgroundHandler)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Cannot open camera $cameraId", e)
+                    runOnUiThread { Toast.makeText(this@MainActivity, "無法開啟相機", Toast.LENGTH_SHORT).show() }
+                }
             }
         }, 250)
     }
