@@ -992,7 +992,8 @@ class MainActivity : AppCompatActivity() {
                         viewBinding.parameterSlider.valueFrom = 0f
                         viewBinding.parameterSlider.valueTo = (apertureList!!.size - 1).toFloat()
                         viewBinding.parameterSlider.stepSize = 1f
-                        val idx = apertureList!!.indexOf(currentAperture ?: apertureList!![0])
+                        val target = currentAperture ?: apertureList!![0]
+                        val idx = apertureList!!.indexOfFirst { it == target }
                         viewBinding.parameterSlider.value = Math.max(0, idx).toFloat()
                     } else {
                         viewBinding.parameterControlPanel.visibility = android.view.View.GONE
@@ -1023,6 +1024,7 @@ class MainActivity : AppCompatActivity() {
                     viewBinding.parameterSlider.stepSize = 0f
                     viewBinding.parameterSlider.value = manualFocusDistance.coerceIn(viewBinding.parameterSlider.valueFrom, viewBinding.parameterSlider.valueTo)
                 }
+                else -> {}
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating slider", e)
