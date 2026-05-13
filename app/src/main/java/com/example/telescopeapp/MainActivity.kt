@@ -89,6 +89,7 @@ class MainActivity : AppCompatActivity() {
     private var isHdrEnabled = false
     private var timerMode = 0 // 0, 3, 10
     private var isFlipEnabled = true
+    private var isTopMenuExpanded = false
     private var isVoiceControlEnabled = false
     private var isRawEnabled = false
     private var isSuperHdrEnabled = false

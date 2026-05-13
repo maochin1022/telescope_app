@@ -1,34 +1,38 @@
 [
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_grid_box.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/grid_box.xml"
-    },
-    {
         "merged": "com.example.telescopeapp-merged_res-28:/layout_activity_main.xml.flat",
         "source": "com.example.telescopeapp-main-30:/layout/activity_main.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_focus_ring.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/focus_ring.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_bg_control_bar.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\bg_control_bar.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_bg_control_bar.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/bg_control_bar.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_bg_shutter_button.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\bg_shutter_button.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_bg_pill_button.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/bg_pill_button.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_bg_pill_button.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\bg_pill_button.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_zoom_bg.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/zoom_bg.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_grid_box.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\grid_box.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_bg_pill_button_active.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/bg_pill_button_active.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_focus_ring.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\focus_ring.xml"
     },
     {
-        "merged": "com.example.telescopeapp-merged_res-28:/drawable_bg_shutter_button.xml.flat",
-        "source": "com.example.telescopeapp-main-30:/drawable/bg_shutter_button.xml"
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_bg_pill_button_active.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\bg_pill_button_active.xml"
+    },
+    {
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-merged_res-28:\\drawable_zoom_bg.xml.flat",
+        "source": "C:\\Users\\Max\\.gradle\\daemon\\8.5\\com.example.telescopeapp-main-30:\\drawable\\zoom_bg.xml"
     }
 ]

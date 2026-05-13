@@ -16,6 +16,7 @@ id btn_toggle_grid
 id btn_toggle_hdr
 id btn_toggle_histogram
 id btn_toggle_raw
+id btn_toggle_stab
 id btn_toggle_super_hdr
 id btn_toggle_timer
 id btn_toggle_voice
@@ -35,7 +36,8 @@ id parameter_slider
 id parameter_value_text
 id preset_layout
 id thumbnail_view
-id top_settings_panel
+id top_bar
+id top_menu_scroll
 id video_capture_button
 id viewFinder
 id zoom_layout

@@ -3120,6 +3120,7 @@ id btn_toggle_grid
 id btn_toggle_hdr
 id btn_toggle_histogram
 id btn_toggle_raw
+id btn_toggle_stab
 id btn_toggle_super_hdr
 id btn_toggle_timer
 id btn_toggle_voice
@@ -3502,7 +3503,8 @@ id title_template
 id toggle
 id top
 id topPanel
-id top_settings_panel
+id top_bar
+id top_menu_scroll
 id touch_outside
 id transitionToEnd
 id transitionToStart

@@ -56,6 +56,9 @@ public final class ActivityMainBinding implements ViewBinding {
   public final TextView btnToggleRaw;
 
   @NonNull
+  public final TextView btnToggleStab;
+
+  @NonNull
   public final TextView btnToggleSuperHdr;
 
   @NonNull
@@ -113,7 +116,7 @@ public final class ActivityMainBinding implements ViewBinding {
   public final ImageView thumbnailView;
 
   @NonNull
-  public final LinearLayout topSettingsPanel;
+  public final HorizontalScrollView topMenuScroll;
 
   @NonNull
   public final ImageButton videoCaptureButton;
@@ -132,16 +135,16 @@ public final class ActivityMainBinding implements ViewBinding {
       @NonNull TextView btnParamMinus, @NonNull TextView btnParamPlus,
       @NonNull TextView btnToggleFlip, @NonNull TextView btnToggleGrid,
       @NonNull TextView btnToggleHdr, @NonNull TextView btnToggleHistogram,
-      @NonNull TextView btnToggleRaw, @NonNull TextView btnToggleSuperHdr,
-      @NonNull TextView btnToggleTimer, @NonNull TextView btnToggleVoice,
-      @NonNull TextView countdownText, @NonNull View flashOverlay, @NonNull ImageView focusRing,
-      @NonNull FrameLayout gridLinesLayout, @NonNull HistogramView histogramView,
-      @NonNull Button imageCaptureButton, @NonNull TextView modeAuto,
-      @NonNull LinearLayout modeLayout, @NonNull TextView modeManual,
+      @NonNull TextView btnToggleRaw, @NonNull TextView btnToggleStab,
+      @NonNull TextView btnToggleSuperHdr, @NonNull TextView btnToggleTimer,
+      @NonNull TextView btnToggleVoice, @NonNull TextView countdownText, @NonNull View flashOverlay,
+      @NonNull ImageView focusRing, @NonNull FrameLayout gridLinesLayout,
+      @NonNull HistogramView histogramView, @NonNull Button imageCaptureButton,
+      @NonNull TextView modeAuto, @NonNull LinearLayout modeLayout, @NonNull TextView modeManual,
       @NonNull LinearLayout parameterControlPanel, @NonNull LinearLayout parameterLayout,
       @NonNull HorizontalScrollView parameterScrollView, @NonNull Slider parameterSlider,
       @NonNull TextView parameterValueText, @NonNull LinearLayout presetLayout,
-      @NonNull ImageView thumbnailView, @NonNull LinearLayout topSettingsPanel,
+      @NonNull ImageView thumbnailView, @NonNull HorizontalScrollView topMenuScroll,
       @NonNull ImageButton videoCaptureButton, @NonNull TextureView viewFinder,
       @NonNull LinearLayout zoomLayout, @NonNull HorizontalScrollView zoomScrollView) {
     this.rootView = rootView;
@@ -154,6 +157,7 @@ public final class ActivityMainBinding implements ViewBinding {
     this.btnToggleHdr = btnToggleHdr;
     this.btnToggleHistogram = btnToggleHistogram;
     this.btnToggleRaw = btnToggleRaw;
+    this.btnToggleStab = btnToggleStab;
     this.btnToggleSuperHdr = btnToggleSuperHdr;
     this.btnToggleTimer = btnToggleTimer;
     this.btnToggleVoice = btnToggleVoice;
@@ -173,7 +177,7 @@ public final class ActivityMainBinding implements ViewBinding {
     this.parameterValueText = parameterValueText;
     this.presetLayout = presetLayout;
     this.thumbnailView = thumbnailView;
-    this.topSettingsPanel = topSettingsPanel;
+    this.topMenuScroll = topMenuScroll;
     this.videoCaptureButton = videoCaptureButton;
     this.viewFinder = viewFinder;
     this.zoomLayout = zoomLayout;
@@ -258,6 +262,12 @@ public final class ActivityMainBinding implements ViewBinding {
       id = R.id.btn_toggle_raw;
       TextView btnToggleRaw = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleRaw == null) {
+        break missingId;
+      }
+
+      id = R.id.btn_toggle_stab;
+      TextView btnToggleStab = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleStab == null) {
         break missingId;
       }
 
@@ -375,9 +385,9 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.top_settings_panel;
-      LinearLayout topSettingsPanel = ViewBindings.findChildViewById(rootView, id);
-      if (topSettingsPanel == null) {
+      id = R.id.top_menu_scroll;
+      HorizontalScrollView topMenuScroll = ViewBindings.findChildViewById(rootView, id);
+      if (topMenuScroll == null) {
         break missingId;
       }
 
@@ -407,12 +417,11 @@ public final class ActivityMainBinding implements ViewBinding {
 
       return new ActivityMainBinding((ConstraintLayout) rootView, bottomControlBar, btnExpandMenu,
           btnParamMinus, btnParamPlus, btnToggleFlip, btnToggleGrid, btnToggleHdr,
-          btnToggleHistogram, btnToggleRaw, btnToggleSuperHdr, btnToggleTimer, btnToggleVoice,
-          countdownText, flashOverlay, focusRing, gridLinesLayout, histogramView,
+          btnToggleHistogram, btnToggleRaw, btnToggleStab, btnToggleSuperHdr, btnToggleTimer,
+          btnToggleVoice, countdownText, flashOverlay, focusRing, gridLinesLayout, histogramView,
           imageCaptureButton, modeAuto, modeLayout, modeManual, parameterControlPanel,
           parameterLayout, parameterScrollView, parameterSlider, parameterValueText, presetLayout,
-          thumbnailView, topSettingsPanel, videoCaptureButton, viewFinder, zoomLayout,
-          zoomScrollView);
+          thumbnailView, topMenuScroll, videoCaptureButton, viewFinder, zoomLayout, zoomScrollView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));
