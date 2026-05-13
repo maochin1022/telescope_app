@@ -94,6 +94,8 @@ class MainActivity : AppCompatActivity() {
     private var isRawEnabled = false
     private var isSuperHdrEnabled = false
     private var isStabEnabled = true // Default ON for long focal lengths
+    private var superHdrMinIso = 50
+    private var superHdrMaxIso = 800
     private val hdrImageBuffer = Collections.synchronizedList(mutableListOf<ByteArray>())
     private var lastAutoIso: Int = 100
     private var lastAutoExposureNs: Long = 10000000L
@@ -198,6 +200,14 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleSuperHdr.setOnClickListener {
             isSuperHdrEnabled = !isSuperHdrEnabled
             viewBinding.btnToggleSuperHdr.setTextColor(if (isSuperHdrEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            if (isSuperHdrEnabled) {
+                Toast.makeText(this, "超動態已開啟 (長按按鈕可設定 ISO 範圍)", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        viewBinding.btnToggleSuperHdr.setOnLongClickListener {
+            showSuperHdrSettingsDialog()
+            true
         }
 
         viewBinding.btnToggleStab.setOnClickListener {
@@ -799,7 +809,7 @@ class MainActivity : AppCompatActivity() {
                     addTarget(reader.surface)
                     applyCameraSettings(this)
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                    set(CaptureRequest.SENSOR_SENSITIVITY, isoRange?.lower ?: 50)
+                    set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMinIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
                     set(CaptureRequest.SENSOR_EXPOSURE_TIME, (currentExposureNs / 2).coerceAtLeast(exposureRange?.lower ?: 1000L))
                     set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
                 }.build())
@@ -809,7 +819,7 @@ class MainActivity : AppCompatActivity() {
                     addTarget(reader.surface)
                     applyCameraSettings(this)
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-                    set(CaptureRequest.SENSOR_SENSITIVITY, (isoRange?.upper?.coerceAtMost(3200) ?: 1600))
+                    set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMaxIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
                     set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureNs)
                     set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
                 }.build())
@@ -1490,6 +1500,40 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             speechRecognizer?.stopListening()
         }
+    }
+
+    private fun showSuperHdrSettingsDialog() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(60, 40, 60, 40)
+        }
+
+        val minInput = android.widget.EditText(this).apply {
+            hint = "低 ISO (預設 50)"
+            setText(superHdrMinIso.toString())
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val maxInput = android.widget.EditText(this).apply {
+            hint = "高 ISO (預設 800)"
+            setText(superHdrMaxIso.toString())
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+
+        layout.addView(TextView(this).apply { text = "超動態：亮部保護 ISO (Min)" })
+        layout.addView(minInput)
+        layout.addView(TextView(this).apply { text = "\n超動態：暗部提升 ISO (Max)" })
+        layout.addView(maxInput)
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("超動態 (S.HDR) 參數設定")
+            .setView(layout)
+            .setPositiveButton("儲存") { _, _ ->
+                superHdrMinIso = minInput.text.toString().toIntOrNull() ?: superHdrMinIso
+                superHdrMaxIso = maxInput.text.toString().toIntOrNull() ?: superHdrMaxIso
+                Toast.makeText(this, "設定成功：ISO $superHdrMinIso - $superHdrMaxIso", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     companion object {
