@@ -152,7 +152,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleHistogram.setOnClickListener {
             isHistogramEnabled = !isHistogramEnabled
             viewBinding.btnToggleHistogram.setTextColor(if (isHistogramEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
-            if (isHistogramEnabled && currentCameraMode == CameraMode.PRO) {
+            if (isHistogramEnabled) {
                 viewBinding.histogramView.visibility = android.view.View.VISIBLE
                 startHistogramAnalysis()
             } else {
@@ -1074,15 +1074,18 @@ class MainActivity : AppCompatActivity() {
             if (currentManualParam != null) {
                 viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
             }
-            if (isHistogramEnabled) {
-                viewBinding.histogramView.visibility = android.view.View.VISIBLE
-                startHistogramAnalysis()
-            }
         } else {
             viewBinding.parameterControlPanel.visibility = android.view.View.GONE
             viewBinding.parameterScrollView.visibility = android.view.View.GONE
-            viewBinding.histogramView.visibility = android.view.View.GONE
             currentManualParam = null
+        }
+        
+        // 直方圖狀態由其獨立開關控制，不受模式影響
+        if (isHistogramEnabled) {
+            viewBinding.histogramView.visibility = android.view.View.VISIBLE
+            startHistogramAnalysis()
+        } else {
+            viewBinding.histogramView.visibility = android.view.View.GONE
             stopHistogramAnalysis()
         }
         updatePreview()
