@@ -8,6 +8,7 @@ import android.graphics.ImageFormat
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
+import android.hardware.camera2.DngCreator
 import android.media.ImageReader
 import android.os.Build
 import android.os.Bundle
@@ -49,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     private var lastMediaUri: android.net.Uri? = null
     private var bestPreviewSize: Size? = null
     private var bestJpegSize: Size? = null
+    private var bestRawSize: Size? = null
+    private var rawImageReader: ImageReader? = null
+    private var currentCharacteristics: CameraCharacteristics? = null
     private var supportedOisModes: IntArray? = null
     private var supportedAfModes: IntArray? = null
 
@@ -88,6 +92,7 @@ class MainActivity : AppCompatActivity() {
     private var isFlipEnabled = true
     private var isTopMenuExpanded = false
     private var isVoiceControlEnabled = false
+    private var isRawEnabled = false
     private var lastAutoIso: Int = 100
     private var lastAutoExposureNs: Long = 10000000L
     private var speechRecognizer: android.speech.SpeechRecognizer? = null
@@ -180,6 +185,12 @@ class MainActivity : AppCompatActivity() {
             isVoiceControlEnabled = !isVoiceControlEnabled
             viewBinding.btnToggleVoice.setTextColor(if (isVoiceControlEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
             if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
+        }
+
+        viewBinding.btnToggleRaw.setOnClickListener {
+            isRawEnabled = !isRawEnabled
+            viewBinding.btnToggleRaw.setTextColor(if (isRawEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            createCameraPreviewSession() // Need to re-configure session to include/exclude RAW surface
         }
 
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
@@ -351,6 +362,7 @@ class MainActivity : AppCompatActivity() {
 
         try {
             val chars = cameraManager.getCameraCharacteristics(cameraId)
+            currentCharacteristics = chars
             supportedOisModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
             supportedAfModes = chars.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
 
@@ -370,6 +382,7 @@ class MainActivity : AppCompatActivity() {
             val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
             if (map != null) {
                 val jpegSizes = map.getOutputSizes(ImageFormat.JPEG)
+                val rawSizes = map.getOutputSizes(ImageFormat.RAW_SENSOR)
                 val previewSizes = map.getOutputSizes(SurfaceTexture::class.java)
                 val standard1080p = Size(1920, 1080)
                 
@@ -403,6 +416,7 @@ class MainActivity : AppCompatActivity() {
                             bestPreviewSize = safePreviewSizes.firstOrNull() ?: previewSizes.firstOrNull() ?: standard1080p
                         }
                     }
+                    bestRawSize = rawSizes?.maxByOrNull { it.width * it.height }
                 } else {
                     bestJpegSize = Size(1280, 720)
                     bestPreviewSize = Size(1280, 720)
@@ -451,6 +465,8 @@ class MainActivity : AppCompatActivity() {
         cameraDevice = null
         imageReader?.close()
         imageReader = null
+        rawImageReader?.close()
+        rawImageReader = null
         mediaRecorder?.release()
         mediaRecorder = null
     }
@@ -600,8 +616,15 @@ class MainActivity : AppCompatActivity() {
                 addTarget(surface)
             }
 
+            val surfaces = mutableListOf(surface, imageReader!!.surface)
+            
+            if (isRawEnabled && bestRawSize != null) {
+                rawImageReader = ImageReader.newInstance(bestRawSize!!.width, bestRawSize!!.height, ImageFormat.RAW_SENSOR, 2)
+                surfaces.add(rawImageReader!!.surface)
+            }
+
             cameraDevice!!.createCaptureSession(
-                listOf(surface, imageReader!!.surface),
+                surfaces,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         if (cameraDevice == null) return
@@ -723,6 +746,9 @@ class MainActivity : AppCompatActivity() {
         try {
             val captureBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
                 addTarget(reader.surface)
+                if (isRawEnabled && rawImageReader != null) {
+                    addTarget(rawImageReader!!.surface)
+                }
                 applyCameraSettings(this)
                 // 照片方向視情況翻轉
                 set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
@@ -732,11 +758,40 @@ class MainActivity : AppCompatActivity() {
                     super.onCaptureStarted(session, request, timestamp, frameNumber)
                 }
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
-                    runOnUiThread { Toast.makeText(this@MainActivity, "Photo saved", Toast.LENGTH_SHORT).show() }
+                    if (isRawEnabled && rawImageReader != null) {
+                        val rawImage = rawImageReader?.acquireLatestImage()
+                        if (rawImage != null) {
+                            saveRawImage(rawImage, result)
+                        }
+                    }
+                    runOnUiThread { Toast.makeText(this@MainActivity, if (isRawEnabled) "JPEG + RAW saved" else "Photo saved", Toast.LENGTH_SHORT).show() }
                 }
             }, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Capture failed", e)
+        }
+    }
+
+    private fun saveRawImage(image: android.media.Image, result: TotalCaptureResult) {
+        val chars = currentCharacteristics ?: return
+        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
+        
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.dng")
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/x-adobe-dng")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Camera")
+            }
+        }
+        
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        uri?.let {
+            contentResolver.openOutputStream(it)?.use { output ->
+                DngCreator(chars, result).use { dngCreator ->
+                    dngCreator.writeImage(output, image)
+                }
+            }
+            image.close()
         }
     }
 
