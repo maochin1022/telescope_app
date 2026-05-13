@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
                 3 -> 10
                 else -> 0
             }
-            viewBinding.textTimer.text = if (timerMode == 0) "倒數" else "${timerMode}秒"
+            viewBinding.textTimer.text = if (timerMode == 0) getString(R.string.menu_timer) else getString(R.string.timer_seconds, timerMode)
             viewBinding.dotTimer.setBackgroundColor(if (timerMode > 0) colorActive else colorInactive)
         }
 
@@ -205,7 +205,7 @@ class MainActivity : AppCompatActivity() {
             isSuperHdrEnabled = !isSuperHdrEnabled
             viewBinding.dotSuperHdr.setBackgroundColor(if (isSuperHdrEnabled) colorActive else colorInactive)
             if (isSuperHdrEnabled) {
-                Toast.makeText(this, "超動態已開啟", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.shdr_enabled_toast), Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -267,7 +267,7 @@ class MainActivity : AppCompatActivity() {
             if (currentManualParam == null) return@setOnClickListener
             val input = android.widget.EditText(this)
             input.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or android.text.InputType.TYPE_NUMBER_FLAG_SIGNED
-            input.hint = "輸入數值 (例如 ISO 400 或 快門 0.01s)"
+            input.hint = getString(R.string.param_input_hint)
             android.app.AlertDialog.Builder(this)
                 .setTitle("手動輸入")
                 .setView(input)
@@ -845,7 +845,7 @@ class MainActivity : AppCompatActivity() {
                         if (rawImage != null) saveRawImage(rawImage, result)
                     }
                     if (!isSuperHdrEnabled) {
-                        runOnUiThread { Toast.makeText(this@MainActivity, "Photo saved", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { Toast.makeText(this@MainActivity, getString(R.string.photo_saved), Toast.LENGTH_SHORT).show() }
                     }
                 }
                 
@@ -1508,30 +1508,30 @@ class MainActivity : AppCompatActivity() {
         }
 
         val minInput = android.widget.EditText(this).apply {
-            hint = "低 ISO (預設 50)"
+            hint = getString(R.string.shdr_hint_min)
             setText(superHdrMinIso.toString())
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
         val maxInput = android.widget.EditText(this).apply {
-            hint = "高 ISO (預設 800)"
+            hint = getString(R.string.shdr_hint_max)
             setText(superHdrMaxIso.toString())
             inputType = android.text.InputType.TYPE_CLASS_NUMBER
         }
 
-        layout.addView(TextView(this).apply { text = "超動態：亮部保護 ISO (Min)" })
+        layout.addView(TextView(this).apply { text = getString(R.string.shdr_min_iso) })
         layout.addView(minInput)
-        layout.addView(TextView(this).apply { text = "\n超動態：暗部提升 ISO (Max)" })
+        layout.addView(TextView(this).apply { text = "\n" + getString(R.string.shdr_max_iso) })
         layout.addView(maxInput)
 
         android.app.AlertDialog.Builder(this)
-            .setTitle("超動態 (S.HDR) 參數設定")
+            .setTitle(getString(R.string.shdr_settings_title))
             .setView(layout)
-            .setPositiveButton("儲存") { _, _ ->
+            .setPositiveButton(getString(R.string.shdr_save)) { _, _ ->
                 superHdrMinIso = minInput.text.toString().toIntOrNull() ?: superHdrMinIso
                 superHdrMaxIso = maxInput.text.toString().toIntOrNull() ?: superHdrMaxIso
-                Toast.makeText(this, "設定成功：ISO $superHdrMinIso - $superHdrMaxIso", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.shdr_save_success, superHdrMinIso, superHdrMaxIso), Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("取消", null)
+            .setNegativeButton(getString(R.string.shdr_cancel), null)
             .show()
     }
 

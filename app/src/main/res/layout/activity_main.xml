@@ -64,7 +64,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_grid" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFD700" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="九宮格" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_grid" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- 直方圖 -->
@@ -79,7 +79,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_histogram" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFD700" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="直方圖" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_histogram" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- HDR -->
@@ -109,7 +109,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_timer" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
-                <TextView android:id="@+id/text_timer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="倒數" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:id="@+id/text_timer" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_timer" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- 鏡像 -->
@@ -124,7 +124,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_flip" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFD700" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="鏡像" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_flip" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- 聲控 -->
@@ -139,7 +139,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_voice" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="聲控" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_voice" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- RAW -->
@@ -175,7 +175,7 @@
                     android:clickable="true"
                     android:focusable="true">
                     <View android:id="@+id/dot_super_hdr" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="超動態" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_super_hdr" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -201,7 +201,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_stab" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFD700" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="防手震" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_stab" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
     </HorizontalScrollView>
@@ -398,7 +398,7 @@
             android:gravity="center"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="自動"
+            android:text="@string/mode_auto"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -410,7 +410,7 @@
             android:gravity="center"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="專業"
+            android:text="@string/mode_manual"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />

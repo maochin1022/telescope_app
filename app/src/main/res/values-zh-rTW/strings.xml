@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">專業望遠攝影</string>
+    
+    <!-- Top Menu Tiles -->
+    <string name="menu_grid">九宮格</string>
+    <string name="menu_histogram">直方圖</string>
+    <string name="menu_hdr">HDR</string>
+    <string name="menu_timer">倒數</string>
+    <string name="menu_flip">鏡像</string>
+    <string name="menu_voice">聲控</string>
+    <string name="menu_raw">RAW</string>
+    <string name="menu_super_hdr">超動態</string>
+    <string name="menu_stab">防手震</string>
+    
+    <!-- Modes -->
+    <string name="mode_auto">自動</string>
+    <string name="mode_manual">專業</string>
+    
+    <!-- Timer -->
+    <string name="timer_seconds">%1$d秒</string>
+    
+    <!-- Super HDR Settings -->
+    <string name="shdr_settings_title">超動態 (S.HDR) 參數設定</string>
+    <string name="shdr_min_iso">超動態：亮部保護 ISO (Min)</string>
+    <string name="shdr_max_iso">超動態：暗部提升 ISO (Max)</string>
+    <string name="shdr_hint_min">低 ISO (預設 50)</string>
+    <string name="shdr_hint_max">高 ISO (預設 800)</string>
+    <string name="shdr_save">儲存</string>
+    <string name="shdr_cancel">取消</string>
+    <string name="shdr_save_success">設定成功：ISO %1$d - %2$d</string>
+    <string name="shdr_enabled_toast">超動態已開啟</string>
+    
+    <!-- Photo Toasts -->
+    <string name="photo_saved">照片已儲存</string>
+    <string name="param_input_hint">輸入數值 (例如 ISO 400 或 S 0.01s)</string>
+</resources>
