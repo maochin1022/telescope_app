@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private var rawImageReader: ImageReader? = null
     private var currentCharacteristics: CameraCharacteristics? = null
     private var supportedOisModes: IntArray? = null
+    private var supportedEisModes: IntArray? = null
     private var supportedAfModes: IntArray? = null
 
     private var backgroundThread: HandlerThread? = null
@@ -88,10 +89,10 @@ class MainActivity : AppCompatActivity() {
     private var isHdrEnabled = false
     private var timerMode = 0 // 0, 3, 10
     private var isFlipEnabled = true
-    private var isTopMenuExpanded = false
     private var isVoiceControlEnabled = false
     private var isRawEnabled = false
     private var isSuperHdrEnabled = false
+    private var isStabEnabled = true // Default ON for long focal lengths
     private val hdrImageBuffer = Collections.synchronizedList(mutableListOf<ByteArray>())
     private var lastAutoIso: Int = 100
     private var lastAutoExposureNs: Long = 10000000L
@@ -196,6 +197,12 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleSuperHdr.setOnClickListener {
             isSuperHdrEnabled = !isSuperHdrEnabled
             viewBinding.btnToggleSuperHdr.setTextColor(if (isSuperHdrEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+        }
+
+        viewBinding.btnToggleStab.setOnClickListener {
+            isStabEnabled = !isStabEnabled
+            viewBinding.btnToggleStab.setTextColor(if (isStabEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            createCameraPreviewSession() // Apply immediately
         }
 
         viewBinding.viewFinder.setOnTouchListener { _, event ->
@@ -376,6 +383,7 @@ class MainActivity : AppCompatActivity() {
             val chars = cameraManager.getCameraCharacteristics(cameraId)
             currentCharacteristics = chars
             supportedOisModes = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
+            supportedEisModes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
             supportedAfModes = chars.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES)
 
             // Read ranges
@@ -696,11 +704,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             
-            // 防手震設定
-            set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
-            if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
-                set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+            // 防手震設定 (OIS + EIS)
+            if (isStabEnabled) {
+                // 嘗試開啟 EIS (電子防手震)
+                if (supportedEisModes?.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true) {
+                    set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+                }
+                // 嘗試開啟 OIS (光學防手震)
+                if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
+                    set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                }
             } else {
+                set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
                 set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
             }
 
