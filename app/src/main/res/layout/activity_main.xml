@@ -55,22 +55,22 @@
             android:id="@+id/btn_toggle_grid"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="GRID"
+            android:text="九宮格"
             android:textColor="#FFD700"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
             android:id="@+id/btn_toggle_histogram"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="HIST"
+            android:text="直方圖"
             android:textColor="#FFD700"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
@@ -79,42 +79,42 @@
             android:layout_height="wrap_content"
             android:text="HDR"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
             android:id="@+id/btn_toggle_timer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="TIMER"
+            android:text="倒數"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
             android:id="@+id/btn_toggle_flip"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="FLIP"
+            android:text="鏡像"
             android:textColor="#FFD700"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
             android:id="@+id/btn_toggle_voice"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="VOICE"
+            android:text="聲控"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
@@ -123,20 +123,20 @@
             android:layout_height="wrap_content"
             android:text="RAW"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
 
         <TextView
             android:id="@+id/btn_toggle_super_hdr"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="S.HDR"
+            android:text="超動態"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold"
-            android:padding="12dp"
+            android:padding="10dp"
             android:background="?selectableItemBackground" />
     </LinearLayout>
 
@@ -332,7 +332,7 @@
             android:gravity="center"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="AUTO"
+            android:text="自動"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
@@ -344,7 +344,7 @@
             android:gravity="center"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="PRO"
+            android:text="專業"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />

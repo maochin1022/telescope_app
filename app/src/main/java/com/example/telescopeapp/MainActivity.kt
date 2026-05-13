@@ -171,7 +171,7 @@ class MainActivity : AppCompatActivity() {
                 3 -> 10
                 else -> 0
             }
-            viewBinding.btnToggleTimer.text = if (timerMode == 0) "TIMER" else "${timerMode}S"
+            viewBinding.btnToggleTimer.text = if (timerMode == 0) "倒數" else "${timerMode}秒"
             viewBinding.btnToggleTimer.setTextColor(if (timerMode > 0) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
         }
 
@@ -1078,11 +1078,11 @@ class MainActivity : AppCompatActivity() {
         
         val params = listOf(
             Pair(ManualParameter.ISO, "ISO"),
-            Pair(ManualParameter.SHUTTER, "S"),
-            Pair(ManualParameter.APERTURE, "F"),
-            Pair(ManualParameter.WB, "WB"),
+            Pair(ManualParameter.SHUTTER, "快門"),
+            Pair(ManualParameter.APERTURE, "光圈"),
+            Pair(ManualParameter.WB, "白平衡"),
             Pair(ManualParameter.EV, "EV"),
-            Pair(ManualParameter.FOCUS, "AF/MF")
+            Pair(ManualParameter.FOCUS, "對焦")
         )
         
         viewBinding.parameterLayout.removeAllViews()
@@ -1119,25 +1119,25 @@ class MainActivity : AppCompatActivity() {
                 val expNs = Math.exp(Math.log(minNs.toDouble()) + ratio * (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble())))
                 val sec = expNs / 1_000_000_000.0
                 if (sec >= 1.0) {
-                    String.format(Locale.US, "%.1fs", sec)
+                    String.format(Locale.US, "快門 %.1fs", sec)
                 } else {
-                    "1/${Math.round(1.0 / sec)}s"
+                    "快門 1/${Math.round(1.0 / sec)}s"
                 }
             }
             ManualParameter.APERTURE -> {
                 apertureList?.let {
                     val idx = value.toInt().coerceIn(0, it.size - 1)
-                    "F${it[idx]}"
-                } ?: "F--"
+                    "光圈 F${it[idx]}"
+                } ?: "光圈 F--"
             }
             ManualParameter.WB -> {
                 when (value.toInt()) {
-                    0 -> "WB AUTO"
-                    1 -> "WB DAYLIGHT"
-                    2 -> "WB CLOUDY"
-                    3 -> "WB FLUORESCENT"
-                    4 -> "WB INCANDESCENT"
-                    else -> "WB AUTO"
+                    0 -> "自動白平衡"
+                    1 -> "日光"
+                    2 -> "陰天"
+                    3 -> "螢光燈"
+                    4 -> "鎢絲燈"
+                    else -> "自動白平衡"
                 }
             }
             ManualParameter.EV -> {
@@ -1145,7 +1145,7 @@ class MainActivity : AppCompatActivity() {
                 if (ev > 0) "+$ev EV" else "$ev EV"
             }
             ManualParameter.FOCUS -> {
-                if (value == 0f) "AF" else String.format(Locale.US, "MF %.2f", value)
+                if (value == 0f) "自動對焦" else String.format(Locale.US, "手動對焦 %.2f", value)
             }
         }
     }
