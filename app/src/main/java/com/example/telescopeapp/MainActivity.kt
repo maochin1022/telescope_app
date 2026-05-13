@@ -138,7 +138,7 @@ class MainActivity : AppCompatActivity() {
         // Top Menu Setup
         viewBinding.btnExpandMenu.setOnClickListener {
             isTopMenuExpanded = !isTopMenuExpanded
-            viewBinding.topSettingsPanel.visibility = if (isTopMenuExpanded) android.view.View.VISIBLE else android.view.View.GONE
+            viewBinding.topMenuScroll.visibility = if (isTopMenuExpanded) android.view.View.VISIBLE else android.view.View.GONE
             viewBinding.btnExpandMenu.animate().rotation(if (isTopMenuExpanded) 180f else 0f).setDuration(300).start()
         }
 
