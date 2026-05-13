@@ -145,15 +145,19 @@ class MainActivity : AppCompatActivity() {
             viewBinding.btnExpandMenu.animate().rotation(if (isTopMenuExpanded) 180f else 0f).setDuration(300).start()
         }
 
+        // --- Top Menu Listeners ---
+        val colorActive = android.graphics.Color.parseColor("#FFD700")
+        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+
         viewBinding.btnToggleGrid.setOnClickListener {
             isGridLinesEnabled = !isGridLinesEnabled
             viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
-            viewBinding.btnToggleGrid.setTextColor(if (isGridLinesEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotGrid.setBackgroundColor(if (isGridLinesEnabled) colorActive else colorInactive)
         }
 
         viewBinding.btnToggleHistogram.setOnClickListener {
             isHistogramEnabled = !isHistogramEnabled
-            viewBinding.btnToggleHistogram.setTextColor(if (isHistogramEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotHistogram.setBackgroundColor(if (isHistogramEnabled) colorActive else colorInactive)
             if (isHistogramEnabled) {
                 viewBinding.histogramView.visibility = android.view.View.VISIBLE
                 startHistogramAnalysis()
@@ -175,45 +179,44 @@ class MainActivity : AppCompatActivity() {
                 3 -> 10
                 else -> 0
             }
-            viewBinding.btnToggleTimer.text = if (timerMode == 0) "倒數" else "${timerMode}秒"
-            viewBinding.btnToggleTimer.setTextColor(if (timerMode > 0) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.textTimer.text = if (timerMode == 0) "倒數" else "${timerMode}秒"
+            viewBinding.dotTimer.setBackgroundColor(if (timerMode > 0) colorActive else colorInactive)
         }
 
         viewBinding.btnToggleFlip.setOnClickListener {
             isFlipEnabled = !isFlipEnabled
-            viewBinding.btnToggleFlip.setTextColor(if (isFlipEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotFlip.setBackgroundColor(if (isFlipEnabled) colorActive else colorInactive)
             configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
         }
 
         viewBinding.btnToggleVoice.setOnClickListener {
             isVoiceControlEnabled = !isVoiceControlEnabled
-            viewBinding.btnToggleVoice.setTextColor(if (isVoiceControlEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotVoice.setBackgroundColor(if (isVoiceControlEnabled) colorActive else colorInactive)
             if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
         }
 
         viewBinding.btnToggleRaw.setOnClickListener {
             isRawEnabled = !isRawEnabled
-            viewBinding.btnToggleRaw.setTextColor(if (isRawEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotRaw.setBackgroundColor(if (isRawEnabled) colorActive else colorInactive)
             createCameraPreviewSession()
         }
 
         viewBinding.btnToggleSuperHdr.setOnClickListener {
             isSuperHdrEnabled = !isSuperHdrEnabled
-            viewBinding.btnToggleSuperHdr.setTextColor(if (isSuperHdrEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            viewBinding.dotSuperHdr.setBackgroundColor(if (isSuperHdrEnabled) colorActive else colorInactive)
             if (isSuperHdrEnabled) {
-                Toast.makeText(this, "超動態已開啟 (長按按鈕可設定 ISO 範圍)", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "超動態已開啟", Toast.LENGTH_SHORT).show()
             }
         }
 
-        viewBinding.btnToggleSuperHdr.setOnLongClickListener {
+        viewBinding.btnSuperHdrSettings.setOnClickListener {
             showSuperHdrSettingsDialog()
-            true
         }
 
         viewBinding.btnToggleStab.setOnClickListener {
             isStabEnabled = !isStabEnabled
-            viewBinding.btnToggleStab.setTextColor(if (isStabEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
-            createCameraPreviewSession() // Apply immediately
+            viewBinding.dotStab.setBackgroundColor(if (isStabEnabled) colorActive else colorInactive)
+            createCameraPreviewSession()
         }
 
         viewBinding.viewFinder.setOnTouchListener { _, event ->
@@ -1072,12 +1075,8 @@ class MainActivity : AppCompatActivity() {
         viewBinding.modeManual.setTextColor(if (currentCameraMode == CameraMode.PRO) colorActive else colorInactive)
         viewBinding.modeManual.setBackgroundResource(if (currentCameraMode == CameraMode.PRO) R.drawable.bg_pill_button_active else 0)
         
-        // Update Top Menu HDR text color
-        if (currentCameraMode == CameraMode.HDR) {
-            viewBinding.btnToggleHdr.setTextColor(android.graphics.Color.parseColor("#FFD700"))
-        } else {
-            viewBinding.btnToggleHdr.setTextColor(android.graphics.Color.WHITE)
-        }
+        // Update Top Menu HDR status dot
+        viewBinding.dotHdr.setBackgroundColor(if (currentCameraMode == CameraMode.HDR) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
 
         if (currentCameraMode == CameraMode.PRO) {
             viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
