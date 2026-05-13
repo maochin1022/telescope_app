@@ -25,6 +25,34 @@
         android:visibility="gone"
         android:elevation="10dp" />
 
+    <!-- Histogram View -->
+    <com.example.telescopeapp.HistogramView
+        android:id="@+id/histogram_view"
+        android:layout_width="120dp"
+        android:layout_height="80dp"
+        android:layout_marginTop="32dp"
+        android:layout_marginStart="16dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- Histogram Toggle Button -->
+    <TextView
+        android:id="@+id/histogram_toggle_button"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:layout_marginEnd="16dp"
+        android:text="HIST"
+        android:textColor="#000000"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:padding="8dp"
+        android:background="@drawable/bg_pill_button_active"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <!-- 九宮格輔助線 -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -50,8 +78,164 @@
         <View android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:background="@drawable/grid_box" />
     </LinearLayout>
 
+    <!-- Parameter Control Panel (Visible only when a parameter is selected in PRO mode) -->
+    <LinearLayout
+        android:id="@+id/parameter_control_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:background="#80000000"
+        app:layout_constraintBottom_toTopOf="@+id/parameter_scroll_view"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <!-- Value Display (Clickable for Input) -->
+        <TextView
+            android:id="@+id/parameter_value_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:padding="8dp"
+            android:text="AUTO"
+            android:textColor="#FFD700"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:background="?selectableItemBackground" />
+
+        <!-- Slider and +/- Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp">
+
+            <TextView
+                android:id="@+id/btn_param_minus"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:gravity="center"
+                android:text="-"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackgroundBorderless" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/parameter_slider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                app:tickVisible="false"
+                app:thumbColor="#FFFFFF"
+                app:trackColorActive="#FFFFFF"
+                app:trackColorInactive="#80FFFFFF" />
+
+            <TextView
+                android:id="@+id/btn_param_plus"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackgroundBorderless" />
+        </LinearLayout>
+
+        <!-- Presets Row -->
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:id="@+id/preset_layout"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+    </LinearLayout>
+
+    <!-- Parameter Tabs (Visible only in Manual Mode) -->
+    <HorizontalScrollView
+        android:id="@+id/parameter_scroll_view"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginBottom="8dp"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/mode_layout"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:id="@+id/parameter_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:gravity="center_vertical" />
+    </HorizontalScrollView>
+
+    <!-- Mode Selector -->
+    <LinearLayout
+        android:id="@+id/mode_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginBottom="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        app:layout_constraintBottom_toTopOf="@+id/bottom_control_bar"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <TextView
+            android:id="@+id/mode_auto"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="AUTO"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/mode_manual"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="PRO"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/mode_hdr"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="HDR"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
     <!-- 底部控制區 (半透明) -->
     <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/bottom_control_bar"
         android:layout_width="match_parent"
         android:layout_height="180dp"
         android:background="@drawable/bg_control_bar"
@@ -116,21 +300,6 @@
             
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- 手動對焦滑桿 -->
-    <com.google.android.material.slider.Slider
-        android:id="@+id/focus_slider"
-        android:layout_width="200dp"
-        android:layout_height="wrap_content"
-        android:layout_marginEnd="-80dp"
-        android:rotation="270"
-        android:valueFrom="0.0"
-        android:valueTo="10.0"
-        app:tickVisible="false"
-        app:thumbColor="#FFFFFF"
-        app:trackColorActive="#FFFFFF"
-        app:trackColorInactive="#80FFFFFF"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>
