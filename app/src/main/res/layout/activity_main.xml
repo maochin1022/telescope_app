@@ -127,7 +127,27 @@
             android:textStyle="bold"
             android:padding="12dp"
             android:background="?selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/btn_toggle_super_hdr"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="S.HDR"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:padding="12dp"
+            android:background="?selectableItemBackground" />
     </LinearLayout>
+
+    <ImageView
+        android:id="@+id/focus_ring"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:src="@drawable/focus_ring"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <ImageView
         android:id="@+id/btn_expand_menu"

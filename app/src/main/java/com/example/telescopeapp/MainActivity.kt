@@ -93,6 +93,8 @@ class MainActivity : AppCompatActivity() {
     private var isTopMenuExpanded = false
     private var isVoiceControlEnabled = false
     private var isRawEnabled = false
+    private var isSuperHdrEnabled = false
+    private val hdrImageBuffer = Collections.synchronizedList(mutableListOf<ByteArray>())
     private var lastAutoIso: Int = 100
     private var lastAutoExposureNs: Long = 10000000L
     private var speechRecognizer: android.speech.SpeechRecognizer? = null
@@ -190,7 +192,19 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleRaw.setOnClickListener {
             isRawEnabled = !isRawEnabled
             viewBinding.btnToggleRaw.setTextColor(if (isRawEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
-            createCameraPreviewSession() // Need to re-configure session to include/exclude RAW surface
+            createCameraPreviewSession()
+        }
+
+        viewBinding.btnToggleSuperHdr.setOnClickListener {
+            isSuperHdrEnabled = !isSuperHdrEnabled
+            viewBinding.btnToggleSuperHdr.setTextColor(if (isSuperHdrEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+        }
+
+        viewBinding.viewFinder.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_DOWN) {
+                triggerTouchToFocus(event.x, event.y)
+                true
+            } else false
         }
 
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
@@ -602,12 +616,21 @@ class MainActivity : AppCompatActivity() {
             imageReader = ImageReader.newInstance(jpegW, jpegH, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
                     backgroundHandler?.post {
-                        val image = reader.acquireLatestImage()
+                        val image = reader.acquireLatestImage() ?: return@post
                         val buffer = image.planes[0].buffer
                         val bytes = ByteArray(buffer.capacity())
                         buffer.get(bytes)
-                        saveImage(bytes)
                         image.close()
+                        
+                        if (isSuperHdrEnabled) {
+                            hdrImageBuffer.add(bytes)
+                            if (hdrImageBuffer.size >= 2) {
+                                mergeAndSaveHdr(hdrImageBuffer[0], hdrImageBuffer[1])
+                                hdrImageBuffer.clear()
+                            }
+                        } else {
+                            saveImage(bytes)
+                        }
                     }
                 }, backgroundHandler)
             }
@@ -682,6 +705,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
             }
+
+            // 開啟人臉偵測
+            val maxFaces = currentCharacteristics?.get(CameraCharacteristics.STATISTICS_INFO_MAX_FACE_COUNT) ?: 0
+            if (maxFaces > 0) {
+                set(CaptureRequest.STATISTICS_FACE_DETECTION_MODE, CameraMetadata.STATISTICS_FACE_DETECTION_MODE_FULL)
+            }
         }
     }
 
@@ -743,32 +772,98 @@ class MainActivity : AppCompatActivity() {
 
         triggerShutterEffect()
         mediaActionSound?.play(android.media.MediaActionSound.SHUTTER_CLICK)
+        
         try {
-            val captureBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
-                addTarget(reader.surface)
-                if (isRawEnabled && rawImageReader != null) {
-                    addTarget(rawImageReader!!.surface)
-                }
-                applyCameraSettings(this)
-                // 照片方向視情況翻轉
-                set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+            val requests = mutableListOf<CaptureRequest>()
+            
+            if (isSuperHdrEnabled) {
+                // Super HDR: 2 shots with different ISOs
+                // Shot 1: Min ISO (Protect Highlights)
+                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                    addTarget(reader.surface)
+                    applyCameraSettings(this)
+                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                    set(CaptureRequest.SENSOR_SENSITIVITY, isoRange?.lower ?: 50)
+                    set(CaptureRequest.SENSOR_EXPOSURE_TIME, (currentExposureNs / 2).coerceAtLeast(exposureRange?.lower ?: 1000L))
+                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                }.build())
+                
+                // Shot 2: High ISO (Brighten Shadows/Face)
+                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                    addTarget(reader.surface)
+                    applyCameraSettings(this)
+                    set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                    set(CaptureRequest.SENSOR_SENSITIVITY, (isoRange?.upper?.coerceAtMost(3200) ?: 1600))
+                    set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureNs)
+                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                }.build())
+                
+                hdrImageBuffer.clear()
+            } else {
+                // Normal shot
+                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                    addTarget(reader.surface)
+                    if (isRawEnabled && rawImageReader != null) addTarget(rawImageReader!!.surface)
+                    applyCameraSettings(this)
+                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                }.build())
             }
-            session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
-                override fun onCaptureStarted(session: CameraCaptureSession, request: CaptureRequest, timestamp: Long, frameNumber: Long) {
-                    super.onCaptureStarted(session, request, timestamp, frameNumber)
-                }
+
+            session.captureBurst(requests, object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                     if (isRawEnabled && rawImageReader != null) {
                         val rawImage = rawImageReader?.acquireLatestImage()
-                        if (rawImage != null) {
-                            saveRawImage(rawImage, result)
-                        }
+                        if (rawImage != null) saveRawImage(rawImage, result)
                     }
-                    runOnUiThread { Toast.makeText(this@MainActivity, if (isRawEnabled) "JPEG + RAW saved" else "Photo saved", Toast.LENGTH_SHORT).show() }
+                    if (!isSuperHdrEnabled) {
+                        runOnUiThread { Toast.makeText(this@MainActivity, "Photo saved", Toast.LENGTH_SHORT).show() }
+                    }
+                }
+                
+                override fun onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
+                    if (isSuperHdrEnabled) {
+                        runOnUiThread { Toast.makeText(this@MainActivity, "Super HDR processing...", Toast.LENGTH_SHORT).show() }
+                        // Processing handled in ImageReader listener for Super HDR (simple implementation)
+                    }
                 }
             }, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Capture failed", e)
+        }
+    }
+
+    private fun mergeAndSaveHdr(bytes1: ByteArray, bytes2: ByteArray) {
+        try {
+            val bmp1 = android.graphics.BitmapFactory.decodeByteArray(bytes1, 0, bytes1.size)
+            val bmp2 = android.graphics.BitmapFactory.decodeByteArray(bytes2, 0, bytes2.size)
+            
+            if (bmp1 == null || bmp2 == null) return
+            
+            // 合成：使用 Alpha 疊加 (簡單曝光融合)
+            val result = android.graphics.Bitmap.createBitmap(bmp1.width, bmp1.height, bmp1.config)
+            val canvas = android.graphics.Canvas(result)
+            val paint = android.graphics.Paint()
+            
+            // 先畫暗部照片 (Protect Highlights)
+            canvas.drawBitmap(bmp1, 0f, 0f, paint)
+            // 疊加亮部照片 (Brighten Shadows)
+            paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SCREEN)
+            paint.alpha = 100 // 約 40% 權重
+            canvas.drawBitmap(bmp2, 0f, 0f, paint)
+            
+            val stream = java.io.ByteArrayOutputStream()
+            result.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)
+            val finalBytes = stream.toByteArray()
+            
+            saveImage(finalBytes)
+            
+            bmp1.recycle()
+            bmp2.recycle()
+            result.recycle()
+            
+            runOnUiThread { Toast.makeText(this, "Super HDR 合成完成", Toast.LENGTH_SHORT).show() }
+        } catch (e: Exception) {
+            Log.e(TAG, "Merge failed", e)
         }
     }
 
@@ -1273,6 +1368,63 @@ class MainActivity : AppCompatActivity() {
     private fun stopHistogramAnalysis() {
         histogramRunnable?.let { backgroundHandler?.removeCallbacks(it) }
         histogramRunnable = null
+    }
+
+    private fun triggerTouchToFocus(x: Float, y: Float) {
+        val sensorArraySize = currentCharacteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: return
+        
+        // 1. 顯示對焦環動畫
+        viewBinding.focusRing.apply {
+            translationX = x - width / 2
+            translationY = y - height / 2
+            visibility = android.view.View.VISIBLE
+            alpha = 1f
+            scaleX = 1.5f
+            scaleY = 1.5f
+            animate().alpha(0f).scaleX(1f).scaleY(1f).setDuration(800).withEndAction { visibility = android.view.View.GONE }.start()
+        }
+
+        // 2. 計算對焦區域 (簡化版：映射 View 座標到 Sensor 座標)
+        val viewWidth = viewBinding.viewFinder.width
+        val viewHeight = viewBinding.viewFinder.height
+        val halfRectWidth = 100
+        val halfRectHeight = 100
+        
+        val centerX = (x / viewWidth * sensorArraySize.width()).toInt()
+        val centerY = (y / viewHeight * sensorArraySize.height()).toInt()
+        
+        val focusRegion = android.hardware.camera2.params.MeteringRectangle(
+            Math.max(centerX - halfRectWidth, 0),
+            Math.max(centerY - halfRectHeight, 0),
+            halfRectWidth * 2,
+            halfRectHeight * 2,
+            android.hardware.camera2.params.MeteringRectangle.METERING_WEIGHT_MAX
+        )
+
+        try {
+            captureSession?.stopRepeating()
+            
+            // 取消之前的對焦
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL)
+            captureSession?.capture(previewRequestBuilder!!.build(), null, backgroundHandler)
+            
+            // 設置新的對焦區域
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(focusRegion))
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(focusRegion))
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_AUTO)
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START)
+            previewRequestBuilder?.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CameraMetadata.CONTROL_AE_PRECAPTURE_TRIGGER_START)
+            
+            captureSession?.capture(previewRequestBuilder!!.build(), object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+                    super.onCaptureCompleted(session, request, result)
+                    previewRequestBuilder?.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_IDLE)
+                    updatePreview()
+                }
+            }, backgroundHandler)
+        } catch (e: Exception) {
+            Log.e(TAG, "Touch to focus failed", e)
+        }
     }
 
     private fun startVoiceListening() {
