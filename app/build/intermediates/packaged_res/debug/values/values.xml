@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">外接鏡頭相機</string>
+    <style name="Base.Theme.TelescopeApp" parent="Theme.Material3.DayNight.NoActionBar">
+        
+    </style>
+    <style name="Theme.TelescopeApp" parent="Base.Theme.TelescopeApp"/>
+</resources>

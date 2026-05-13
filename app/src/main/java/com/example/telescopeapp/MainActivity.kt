@@ -4,11 +4,9 @@ import android.Manifest
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
-import android.graphics.Matrix
-import android.graphics.SurfaceTexture
+import android.graphics.*
 import android.hardware.camera2.*
-import android.hardware.camera2.DngCreator
+import android.hardware.camera2.params.*
 import android.media.ImageReader
 import android.os.Build
 import android.os.Bundle
@@ -706,11 +704,13 @@ class MainActivity : AppCompatActivity() {
                 set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
             }
 
-            // 開啟人臉偵測
+            /*
+            // 開啟人臉偵測 (0: OFF, 1: SIMPLE, 2: FULL)
             val maxFaces = currentCharacteristics?.get(CameraCharacteristics.STATISTICS_INFO_MAX_FACE_COUNT) ?: 0
             if (maxFaces > 0) {
-                set(CaptureRequest.STATISTICS_FACE_DETECTION_MODE, CameraMetadata.STATISTICS_FACE_DETECTION_MODE_FULL)
+                set(CaptureRequest.STATISTICS_FACE_DETECTION_MODE, 2) 
             }
+            */
         }
     }
 
@@ -1393,12 +1393,12 @@ class MainActivity : AppCompatActivity() {
         val centerX = (x / viewWidth * sensorArraySize.width()).toInt()
         val centerY = (y / viewHeight * sensorArraySize.height()).toInt()
         
-        val focusRegion = android.hardware.camera2.params.MeteringRectangle(
+        val focusRegion = MeteringRectangle(
             Math.max(centerX - halfRectWidth, 0),
             Math.max(centerY - halfRectHeight, 0),
             halfRectWidth * 2,
             halfRectHeight * 2,
-            android.hardware.camera2.params.MeteringRectangle.METERING_WEIGHT_MAX
+            MeteringRectangle.METERING_WEIGHT_MAX
         )
 
         try {
