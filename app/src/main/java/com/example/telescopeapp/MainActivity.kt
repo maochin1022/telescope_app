@@ -81,7 +81,12 @@ class MainActivity : AppCompatActivity() {
     private val paramTextViews = mutableListOf<TextView>()
     
     private var histogramRunnable: java.lang.Runnable? = null
-    private var isHistogramEnabled = true
+    private var isHistogramEnabled = false
+    private var isGridLinesEnabled = false
+    private var isHdrEnabled = false
+    private var timerMode = 0 // 0, 3, 10
+    private var isFlipEnabled = true
+    private var isTopMenuExpanded = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,9 +114,62 @@ class MainActivity : AppCompatActivity() {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
         }
 
-        viewBinding.imageCaptureButton.setOnClickListener { takePhoto() }
+        viewBinding.imageCaptureButton.setOnClickListener {
+            if (timerMode > 0) {
+                startCountdown()
+            } else {
+                takePhoto()
+            }
+        }
         viewBinding.videoCaptureButton.setOnClickListener {
             if (isRecording) stopRecordingVideo() else startRecordingVideo()
+        }
+
+        // Top Menu Setup
+        viewBinding.btnExpandMenu.setOnClickListener {
+            isTopMenuExpanded = !isTopMenuExpanded
+            viewBinding.topSettingsPanel.visibility = if (isTopMenuExpanded) android.view.View.VISIBLE else android.view.View.GONE
+            viewBinding.btnExpandMenu.animate().rotation(if (isTopMenuExpanded) 180f else 0f).setDuration(300).start()
+        }
+
+        viewBinding.btnToggleGrid.setOnClickListener {
+            isGridLinesEnabled = !isGridLinesEnabled
+            viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
+            viewBinding.btnToggleGrid.setTextColor(if (isGridLinesEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+        }
+
+        viewBinding.btnToggleHistogram.setOnClickListener {
+            isHistogramEnabled = !isHistogramEnabled
+            viewBinding.btnToggleHistogram.setTextColor(if (isHistogramEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            if (isHistogramEnabled && currentCameraMode == CameraMode.PRO) {
+                viewBinding.histogramView.visibility = android.view.View.VISIBLE
+                startHistogramAnalysis()
+            } else {
+                viewBinding.histogramView.visibility = android.view.View.GONE
+                stopHistogramAnalysis()
+            }
+        }
+
+        viewBinding.btnToggleHdr.setOnClickListener {
+            currentCameraMode = if (currentCameraMode == CameraMode.HDR) CameraMode.AUTO else CameraMode.HDR
+            updateModeUI()
+            createCameraPreviewSession()
+        }
+
+        viewBinding.btnToggleTimer.setOnClickListener {
+            timerMode = when(timerMode) {
+                0 -> 3
+                3 -> 10
+                else -> 0
+            }
+            viewBinding.btnToggleTimer.text = if (timerMode == 0) "TIMER" else "${timerMode}S"
+            viewBinding.btnToggleTimer.setTextColor(if (timerMode > 0) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+        }
+
+        viewBinding.btnToggleFlip.setOnClickListener {
+            isFlipEnabled = !isFlipEnabled
+            viewBinding.btnToggleFlip.setTextColor(if (isFlipEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
         }
 
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
@@ -180,19 +238,7 @@ class MainActivity : AppCompatActivity() {
                 .show()
         }
 
-        viewBinding.histogramToggleButton.setOnClickListener {
-            isHistogramEnabled = !isHistogramEnabled
-            viewBinding.histogramToggleButton.setBackgroundResource(if (isHistogramEnabled) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
-            viewBinding.histogramToggleButton.setTextColor(if (isHistogramEnabled) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-            
-            if (isHistogramEnabled && currentCameraMode == CameraMode.PRO) {
-                viewBinding.histogramView.visibility = android.view.View.VISIBLE
-                startHistogramAnalysis()
-            } else {
-                viewBinding.histogramView.visibility = android.view.View.GONE
-                stopHistogramAnalysis()
-            }
-        }
+        // Removed old histogram toggle button logic
 
         var dX = 0f
         var dY = 0f
@@ -282,8 +328,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
         val matrix = Matrix()
-        // --- 核心修正：翻轉預覽畫面 180 度 ---
-        matrix.postRotate(180f, viewWidth / 2f, viewHeight / 2f)
+        if (isFlipEnabled) {
+            matrix.postRotate(180f, viewWidth / 2f, viewHeight / 2f)
+        }
         viewBinding.viewFinder.setTransform(matrix)
     }
 
@@ -426,8 +473,8 @@ class MainActivity : AppCompatActivity() {
             setVideoSize(width, height)
             setVideoEncoder(android.media.MediaRecorder.VideoEncoder.H264)
             setAudioEncoder(android.media.MediaRecorder.AudioEncoder.AAC)
-            // --- 核心修正：錄影方向也翻轉 180 度 ---
-            setOrientationHint(180)
+            // --- 核心修正：錄影方向視情況翻轉 ---
+            setOrientationHint(if (isFlipEnabled) 180 else 0)
             prepare()
         }
     }
@@ -625,6 +672,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun startCountdown() {
+        var timeLeft = timerMode
+        viewBinding.countdownText.visibility = android.view.View.VISIBLE
+        viewBinding.countdownText.text = timeLeft.toString()
+        
+        val timer = object : android.os.CountDownTimer((timerMode * 1000).toLong(), 1000) {
+            override fun onTick(millisUntilFinished: Long) {
+                timeLeft = (millisUntilFinished / 1000).toInt() + 1
+                viewBinding.countdownText.text = timeLeft.toString()
+                // You could play a beep sound here
+            }
+            override fun onFinish() {
+                viewBinding.countdownText.visibility = android.view.View.GONE
+                takePhoto()
+            }
+        }
+        timer.start()
+    }
+
     private fun takePhoto() {
         val device = cameraDevice ?: return
         val reader = imageReader ?: return
@@ -636,8 +702,8 @@ class MainActivity : AppCompatActivity() {
             val captureBuilder = device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
                 addTarget(reader.surface)
                 applyCameraSettings(this)
-                // 照片方向也轉 180 度 (對應預覽的旋轉)
-                set(CaptureRequest.JPEG_ORIENTATION, 180)
+                // 照片方向視情況翻轉
+                set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
             }
             session.capture(captureBuilder.build(), object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureStarted(session: CameraCaptureSession, request: CaptureRequest, timestamp: Long, frameNumber: Long) {
@@ -785,47 +851,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupModeSelectors() {
-        val colorActive = android.graphics.Color.parseColor("#000000")
-        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
-        
-        fun updateModeUI() {
-            viewBinding.modeAuto.setTextColor(if (currentCameraMode == CameraMode.AUTO) colorActive else colorInactive)
-            viewBinding.modeAuto.setBackgroundResource(if (currentCameraMode == CameraMode.AUTO) R.drawable.bg_pill_button_active else 0)
-            
-            viewBinding.modeManual.setTextColor(if (currentCameraMode == CameraMode.PRO) colorActive else colorInactive)
-            viewBinding.modeManual.setBackgroundResource(if (currentCameraMode == CameraMode.PRO) R.drawable.bg_pill_button_active else 0)
-            
-            viewBinding.modeHdr.setTextColor(if (currentCameraMode == CameraMode.HDR) colorActive else colorInactive)
-            viewBinding.modeHdr.setBackgroundResource(if (currentCameraMode == CameraMode.HDR) R.drawable.bg_pill_button_active else 0)
-            
-            if (currentCameraMode == CameraMode.PRO) {
-                viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
-                viewBinding.histogramToggleButton.visibility = android.view.View.VISIBLE
-                // We show parameterControlPanel only when a parameter is selected.
-                // It is initially hidden until user clicks ISO/S/F etc.
-                if (currentManualParam != null) {
-                    viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
-                }
-                if (isHistogramEnabled) {
-                    viewBinding.histogramView.visibility = android.view.View.VISIBLE
-                    startHistogramAnalysis()
-                }
-            } else {
-                viewBinding.parameterControlPanel.visibility = android.view.View.GONE
-                viewBinding.parameterScrollView.visibility = android.view.View.GONE
-                viewBinding.histogramView.visibility = android.view.View.GONE
-                viewBinding.histogramToggleButton.visibility = android.view.View.GONE
-                currentManualParam = null
-                stopHistogramAnalysis()
-            }
-            updatePreview()
-        }
-        
         viewBinding.modeAuto.setOnClickListener { currentCameraMode = CameraMode.AUTO; updateModeUI() }
         viewBinding.modeManual.setOnClickListener { currentCameraMode = CameraMode.PRO; updateModeUI() }
-        viewBinding.modeHdr.setOnClickListener { currentCameraMode = CameraMode.HDR; updateModeUI() }
-        
         updateModeUI()
+    }
+
+    private fun updateModeUI() {
+        val colorActive = android.graphics.Color.parseColor("#000000")
+        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+
+        viewBinding.modeAuto.setTextColor(if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) colorActive else colorInactive)
+        viewBinding.modeAuto.setBackgroundResource(if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) R.drawable.bg_pill_button_active else 0)
+        
+        viewBinding.modeManual.setTextColor(if (currentCameraMode == CameraMode.PRO) colorActive else colorInactive)
+        viewBinding.modeManual.setBackgroundResource(if (currentCameraMode == CameraMode.PRO) R.drawable.bg_pill_button_active else 0)
+        
+        // Update Top Menu HDR text color
+        if (currentCameraMode == CameraMode.HDR) {
+            viewBinding.btnToggleHdr.setTextColor(android.graphics.Color.parseColor("#FFD700"))
+        } else {
+            viewBinding.btnToggleHdr.setTextColor(android.graphics.Color.WHITE)
+        }
+
+        if (currentCameraMode == CameraMode.PRO) {
+            viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
+            if (currentManualParam != null) {
+                viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+            }
+            if (isHistogramEnabled) {
+                viewBinding.histogramView.visibility = android.view.View.VISIBLE
+                startHistogramAnalysis()
+            }
+        } else {
+            viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            viewBinding.parameterScrollView.visibility = android.view.View.GONE
+            viewBinding.histogramView.visibility = android.view.View.GONE
+            currentManualParam = null
+            stopHistogramAnalysis()
+        }
+        updatePreview()
     }
 
     private fun setupManualParameters() {
