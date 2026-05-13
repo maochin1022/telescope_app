@@ -164,7 +164,7 @@ class MainActivity : AppCompatActivity() {
                         val v = input.text.toString().toFloat()
                         val sliderVal = when (currentManualParam) {
                             ManualParameter.SHUTTER -> {
-                                val sec = if (v > 10) 1.0 / v else v
+                                val sec = if (v > 10) 1.0 / v else v.toDouble()
                                 val minNs = exposureRange?.lower ?: 1000000L
                                 val maxNs = exposureRange?.upper ?: 1000000000L
                                 val expNs = (sec * 1_000_000_000).toLong().coerceIn(minNs, maxNs)
@@ -950,7 +950,7 @@ class MainActivity : AppCompatActivity() {
                 textSize = 12f
                 gravity = Gravity.CENTER
                 setBackgroundResource(R.drawable.bg_pill_button)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 70).apply { setMargins(8, 0, 8, 0) }
+                layoutParams = LinearLayout.LayoutParams(android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 70).apply { setMargins(8, 0, 8, 0) }
                 setPadding(32, 0, 32, 0)
                 setOnClickListener {
                     try {
