@@ -87,6 +87,10 @@ class MainActivity : AppCompatActivity() {
     private var timerMode = 0 // 0, 3, 10
     private var isFlipEnabled = true
     private var isTopMenuExpanded = false
+    private var isVoiceControlEnabled = false
+    private var lastAutoIso: Int = 100
+    private var lastAutoExposureNs: Long = 10000000L
+    private var speechRecognizer: android.speech.SpeechRecognizer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -170,6 +174,12 @@ class MainActivity : AppCompatActivity() {
             isFlipEnabled = !isFlipEnabled
             viewBinding.btnToggleFlip.setTextColor(if (isFlipEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
             configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
+        }
+
+        viewBinding.btnToggleVoice.setOnClickListener {
+            isVoiceControlEnabled = !isVoiceControlEnabled
+            viewBinding.btnToggleVoice.setTextColor(if (isVoiceControlEnabled) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
+            if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
         }
 
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
@@ -280,6 +290,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         mediaActionSound?.release()
+        stopVoiceListening()
+        speechRecognizer?.destroy()
     }
 
     override fun onResume() {
@@ -654,9 +666,19 @@ class MainActivity : AppCompatActivity() {
         if (cameraDevice == null || previewRequestBuilder == null) return
         try {
             applyCameraSettings(previewRequestBuilder!!)
-            captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), null, backgroundHandler)
+            captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), captureCallback, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update preview", e)
+        }
+    }
+
+    private val captureCallback = object : CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
+            super.onCaptureCompleted(session, request, result)
+            if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) {
+                lastAutoIso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: lastAutoIso
+                lastAutoExposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: lastAutoExposureNs
+            }
         }
     }
 
@@ -852,7 +874,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupModeSelectors() {
         viewBinding.modeAuto.setOnClickListener { currentCameraMode = CameraMode.AUTO; updateModeUI() }
-        viewBinding.modeManual.setOnClickListener { currentCameraMode = CameraMode.PRO; updateModeUI() }
+        viewBinding.modeManual.setOnClickListener { 
+            // 進入 PRO 模式時，先帶入最後一次 AUTO 模式的參數
+            if (currentCameraMode != CameraMode.PRO) {
+                currentIso = lastAutoIso
+                currentExposureNs = lastAutoExposureNs
+            }
+            currentCameraMode = CameraMode.PRO
+            updateModeUI() 
+        }
         updateModeUI()
     }
 
@@ -1188,6 +1218,52 @@ class MainActivity : AppCompatActivity() {
     private fun stopHistogramAnalysis() {
         histogramRunnable?.let { backgroundHandler?.removeCallbacks(it) }
         histogramRunnable = null
+    }
+
+    private fun startVoiceListening() {
+        runOnUiThread {
+            if (speechRecognizer == null) {
+                speechRecognizer = android.speech.SpeechRecognizer.createSpeechRecognizer(this)
+                speechRecognizer?.setRecognitionListener(object : android.speech.RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {}
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) {
+                        if (isVoiceControlEnabled) {
+                            // 延遲重試以避免循環報錯
+                            viewBinding.root.postDelayed({ if (isVoiceControlEnabled) startVoiceListening() }, 1000)
+                        }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        val matches = results?.getStringArrayList(android.speech.SpeechRecognizer.RESULTS_RECOGNITION)
+                        if (matches != null) {
+                            for (match in matches) {
+                                if (match.contains("拍") || match.contains("拍照") || match.contains("cheese") || match.contains("茄子")) {
+                                    takePhoto()
+                                    break
+                                }
+                            }
+                        }
+                        if (isVoiceControlEnabled) startVoiceListening()
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {}
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+            }
+            val intent = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, "zh-TW")
+            }
+            speechRecognizer?.startListening(intent)
+        }
+    }
+
+    private fun stopVoiceListening() {
+        runOnUiThread {
+            speechRecognizer?.stopListening()
+        }
     }
 
     companion object {
