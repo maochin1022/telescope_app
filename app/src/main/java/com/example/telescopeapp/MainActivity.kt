@@ -451,6 +451,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        resetInactivityTimer()
         accelerometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         magnetometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         startBackgroundThread()
@@ -463,6 +464,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        timeLapseHandler.removeCallbacksAndMessages(null)
+        inactivityHandler.removeCallbacksAndMessages(null)
         sensorManager.unregisterListener(sensorListener)
         closeCamera()
         stopBackgroundThread()
@@ -1948,6 +1951,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun stopVoiceListening() {
+        runOnUiThread {
+            speechRecognizer?.stopListening()
+        }
+    }
+
     private fun showMenuSelectionDialog(title: String, options: Array<String>, onSelect: (Int) -> Unit) {
         resetInactivityTimer()
         android.app.AlertDialog.Builder(this)
@@ -1996,16 +2005,7 @@ class MainActivity : AppCompatActivity() {
         }, timeLapseIntervalMs)
     }
 
-    override fun onResume() {
-        super.onResume()
-        resetInactivityTimer()
-    }
 
-    override fun onPause() {
-        super.onPause()
-        timeLapseHandler.removeCallbacksAndMessages(null)
-        inactivityHandler.removeCallbacksAndMessages(null)
-    }
 
     private fun showLutManagerDialog() {
         val lutDir = File(filesDir, "luts")
@@ -2096,7 +2096,7 @@ class MainActivity : AppCompatActivity() {
         
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(listView, LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            addView(listView, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
             val btnImport = android.widget.Button(this@MainActivity).apply {
                 text = "匯入新檔案 (.cube)"
                 setOnClickListener { 
