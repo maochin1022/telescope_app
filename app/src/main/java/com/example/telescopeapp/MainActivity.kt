@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleInfo.setOnClickListener {
             showMenuSelectionDialog("資訊顯示", arrayOf("關閉", "開啟")) { which ->
                 isDisplayInfoEnabled = (which == 1)
-                viewBinding.info_overlay.visibility = if (isDisplayInfoEnabled) android.view.View.VISIBLE else android.view.View.GONE
+                viewBinding.infoOverlay.visibility = if (isDisplayInfoEnabled) android.view.View.VISIBLE else android.view.View.GONE
                 updateTopMenuUI()
                 updateInfoOverlay()
             }
@@ -924,7 +924,7 @@ class MainActivity : AppCompatActivity() {
         } else "AUTO"
 
         val apertureStr = currentAperture?.let { String.format(Locale.US, "F%.2f", it) } ?: ""
-        viewBinding.info_overlay.text = String.format(Locale.US, "ISO %d | S %s | %s %s", iso, shutterStr, apertureStr, wbStr)
+        viewBinding.infoOverlay.text = String.format(Locale.US, "ISO %d | S %s | %s %s", iso, shutterStr, apertureStr, wbStr)
     }
 
     private fun updateLutEffect() {
@@ -1457,11 +1457,11 @@ class MainActivity : AppCompatActivity() {
         setTileStyle(viewBinding.btnToggleFlip, isFlipEnabled, viewBinding.dotFlip)
         setTileStyle(viewBinding.btnToggleVoice, isVoiceControlEnabled, viewBinding.dotVoice)
         setTileStyle(viewBinding.btnToggleRaw, isRawEnabled, viewBinding.dotRaw)
-        setTileStyle(viewBinding.btnToggleInfo, isDisplayInfoEnabled, viewBinding.dot_info)
-        setTileStyle(viewBinding.btnToggleStyle, currentStyleIndex > 0, viewBinding.dot_style)
-        setTileStyle(viewBinding.btnToggleGrading, isProGradingEnabled, viewBinding.dot_grading)
-        setTileStyle(viewBinding.btnTogglePeaking, isPeakingEnabled, viewBinding.dot_peaking)
-        setTileStyle(viewBinding.btnToggleLevel, isLevelEnabled, viewBinding.dot_level)
+        setTileStyle(viewBinding.btnToggleInfo, isDisplayInfoEnabled, viewBinding.dotInfo)
+        setTileStyle(viewBinding.btnToggleStyle, currentStyleIndex > 0, viewBinding.dotStyle)
+        setTileStyle(viewBinding.btnToggleGrading, isProGradingEnabled, viewBinding.dotGrading)
+        setTileStyle(viewBinding.btnTogglePeaking, isPeakingEnabled, viewBinding.dotPeaking)
+        setTileStyle(viewBinding.btnToggleLevel, isLevelEnabled, viewBinding.dotLevel)
         
         // Super HDR tile has a slightly different structure (nested)
         viewBinding.btnToggleSuperHdr.parent?.let { parent ->
@@ -1484,7 +1484,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         setTileStyle(viewBinding.btnToggleStab, currentStabMode > 0, viewBinding.dotStab)
-        setTileStyle(viewBinding.btnToggleInterval, timeLapseIntervalMs > 0, viewBinding.dot_interval)
+        setTileStyle(viewBinding.btnToggleInterval, timeLapseIntervalMs > 0, viewBinding.dotInterval)
         
         // Update Stab Text based on mode
         viewBinding.textStab.text = when(currentStabMode) {
@@ -1496,7 +1496,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Update Interval Text
-        viewBinding.text_interval.text = if (timeLapseIntervalMs == 0L) "縮時關閉" else "${timeLapseIntervalMs/1000}s 縮時"
+        viewBinding.textInterval.text = if (timeLapseIntervalMs == 0L) "縮時關閉" else "${timeLapseIntervalMs/1000}s 縮時"
     }
 
     private fun setupManualParameters() {

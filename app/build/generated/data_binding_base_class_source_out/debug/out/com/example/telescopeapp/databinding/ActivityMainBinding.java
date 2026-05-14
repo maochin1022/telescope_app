@@ -35,40 +35,109 @@ public final class ActivityMainBinding implements ViewBinding {
   public final ImageView btnExpandMenu;
 
   @NonNull
+  public final LinearLayout btnImportLut;
+
+  @NonNull
   public final TextView btnParamMinus;
 
   @NonNull
   public final TextView btnParamPlus;
 
   @NonNull
-  public final TextView btnToggleFlip;
+  public final LinearLayout btnSuperHdrSettings;
 
   @NonNull
-  public final TextView btnToggleGrid;
+  public final LinearLayout btnToggleFlip;
 
   @NonNull
-  public final TextView btnToggleHdr;
+  public final LinearLayout btnToggleGrading;
 
   @NonNull
-  public final TextView btnToggleHistogram;
+  public final LinearLayout btnToggleGrid;
 
   @NonNull
-  public final TextView btnToggleRaw;
+  public final LinearLayout btnToggleHdr;
 
   @NonNull
-  public final TextView btnToggleStab;
+  public final LinearLayout btnToggleHistogram;
 
   @NonNull
-  public final TextView btnToggleSuperHdr;
+  public final LinearLayout btnToggleInfo;
 
   @NonNull
-  public final TextView btnToggleTimer;
+  public final LinearLayout btnToggleInterval;
 
   @NonNull
-  public final TextView btnToggleVoice;
+  public final LinearLayout btnToggleLevel;
+
+  @NonNull
+  public final LinearLayout btnTogglePeaking;
+
+  @NonNull
+  public final LinearLayout btnToggleRaw;
+
+  @NonNull
+  public final LinearLayout btnToggleStab;
+
+  @NonNull
+  public final LinearLayout btnToggleStyle;
+
+  @NonNull
+  public final LinearLayout btnToggleSuperHdr;
+
+  @NonNull
+  public final LinearLayout btnToggleTimer;
+
+  @NonNull
+  public final LinearLayout btnToggleVoice;
 
   @NonNull
   public final TextView countdownText;
+
+  @NonNull
+  public final View dotFlip;
+
+  @NonNull
+  public final View dotGrading;
+
+  @NonNull
+  public final View dotGrid;
+
+  @NonNull
+  public final View dotHdr;
+
+  @NonNull
+  public final View dotHistogram;
+
+  @NonNull
+  public final View dotInfo;
+
+  @NonNull
+  public final View dotInterval;
+
+  @NonNull
+  public final View dotLevel;
+
+  @NonNull
+  public final View dotPeaking;
+
+  @NonNull
+  public final View dotRaw;
+
+  @NonNull
+  public final View dotStab;
+
+  @NonNull
+  public final View dotStyle;
+
+  @NonNull
+  public final View dotSuperHdr;
+
+  @NonNull
+  public final View dotTimer;
+
+  @NonNull
+  public final View dotVoice;
 
   @NonNull
   public final View flashOverlay;
@@ -84,6 +153,18 @@ public final class ActivityMainBinding implements ViewBinding {
 
   @NonNull
   public final Button imageCaptureButton;
+
+  @NonNull
+  public final TextView infoOverlay;
+
+  @NonNull
+  public final View levelCenterDot;
+
+  @NonNull
+  public final FrameLayout levelContainer;
+
+  @NonNull
+  public final View levelLine;
 
   @NonNull
   public final TextView modeAuto;
@@ -113,6 +194,15 @@ public final class ActivityMainBinding implements ViewBinding {
   public final LinearLayout presetLayout;
 
   @NonNull
+  public final TextView textInterval;
+
+  @NonNull
+  public final TextView textStab;
+
+  @NonNull
+  public final TextView textTimer;
+
+  @NonNull
   public final ImageView thumbnailView;
 
   @NonNull
@@ -132,41 +222,79 @@ public final class ActivityMainBinding implements ViewBinding {
 
   private ActivityMainBinding(@NonNull ConstraintLayout rootView,
       @NonNull ConstraintLayout bottomControlBar, @NonNull ImageView btnExpandMenu,
-      @NonNull TextView btnParamMinus, @NonNull TextView btnParamPlus,
-      @NonNull TextView btnToggleFlip, @NonNull TextView btnToggleGrid,
-      @NonNull TextView btnToggleHdr, @NonNull TextView btnToggleHistogram,
-      @NonNull TextView btnToggleRaw, @NonNull TextView btnToggleStab,
-      @NonNull TextView btnToggleSuperHdr, @NonNull TextView btnToggleTimer,
-      @NonNull TextView btnToggleVoice, @NonNull TextView countdownText, @NonNull View flashOverlay,
-      @NonNull ImageView focusRing, @NonNull FrameLayout gridLinesLayout,
-      @NonNull HistogramView histogramView, @NonNull Button imageCaptureButton,
+      @NonNull LinearLayout btnImportLut, @NonNull TextView btnParamMinus,
+      @NonNull TextView btnParamPlus, @NonNull LinearLayout btnSuperHdrSettings,
+      @NonNull LinearLayout btnToggleFlip, @NonNull LinearLayout btnToggleGrading,
+      @NonNull LinearLayout btnToggleGrid, @NonNull LinearLayout btnToggleHdr,
+      @NonNull LinearLayout btnToggleHistogram, @NonNull LinearLayout btnToggleInfo,
+      @NonNull LinearLayout btnToggleInterval, @NonNull LinearLayout btnToggleLevel,
+      @NonNull LinearLayout btnTogglePeaking, @NonNull LinearLayout btnToggleRaw,
+      @NonNull LinearLayout btnToggleStab, @NonNull LinearLayout btnToggleStyle,
+      @NonNull LinearLayout btnToggleSuperHdr, @NonNull LinearLayout btnToggleTimer,
+      @NonNull LinearLayout btnToggleVoice, @NonNull TextView countdownText, @NonNull View dotFlip,
+      @NonNull View dotGrading, @NonNull View dotGrid, @NonNull View dotHdr,
+      @NonNull View dotHistogram, @NonNull View dotInfo, @NonNull View dotInterval,
+      @NonNull View dotLevel, @NonNull View dotPeaking, @NonNull View dotRaw, @NonNull View dotStab,
+      @NonNull View dotStyle, @NonNull View dotSuperHdr, @NonNull View dotTimer,
+      @NonNull View dotVoice, @NonNull View flashOverlay, @NonNull ImageView focusRing,
+      @NonNull FrameLayout gridLinesLayout, @NonNull HistogramView histogramView,
+      @NonNull Button imageCaptureButton, @NonNull TextView infoOverlay,
+      @NonNull View levelCenterDot, @NonNull FrameLayout levelContainer, @NonNull View levelLine,
       @NonNull TextView modeAuto, @NonNull LinearLayout modeLayout, @NonNull TextView modeManual,
       @NonNull LinearLayout parameterControlPanel, @NonNull LinearLayout parameterLayout,
       @NonNull HorizontalScrollView parameterScrollView, @NonNull Slider parameterSlider,
       @NonNull TextView parameterValueText, @NonNull LinearLayout presetLayout,
+      @NonNull TextView textInterval, @NonNull TextView textStab, @NonNull TextView textTimer,
       @NonNull ImageView thumbnailView, @NonNull HorizontalScrollView topMenuScroll,
       @NonNull ImageButton videoCaptureButton, @NonNull TextureView viewFinder,
       @NonNull LinearLayout zoomLayout, @NonNull HorizontalScrollView zoomScrollView) {
     this.rootView = rootView;
     this.bottomControlBar = bottomControlBar;
     this.btnExpandMenu = btnExpandMenu;
+    this.btnImportLut = btnImportLut;
     this.btnParamMinus = btnParamMinus;
     this.btnParamPlus = btnParamPlus;
+    this.btnSuperHdrSettings = btnSuperHdrSettings;
     this.btnToggleFlip = btnToggleFlip;
+    this.btnToggleGrading = btnToggleGrading;
     this.btnToggleGrid = btnToggleGrid;
     this.btnToggleHdr = btnToggleHdr;
     this.btnToggleHistogram = btnToggleHistogram;
+    this.btnToggleInfo = btnToggleInfo;
+    this.btnToggleInterval = btnToggleInterval;
+    this.btnToggleLevel = btnToggleLevel;
+    this.btnTogglePeaking = btnTogglePeaking;
     this.btnToggleRaw = btnToggleRaw;
     this.btnToggleStab = btnToggleStab;
+    this.btnToggleStyle = btnToggleStyle;
     this.btnToggleSuperHdr = btnToggleSuperHdr;
     this.btnToggleTimer = btnToggleTimer;
     this.btnToggleVoice = btnToggleVoice;
     this.countdownText = countdownText;
+    this.dotFlip = dotFlip;
+    this.dotGrading = dotGrading;
+    this.dotGrid = dotGrid;
+    this.dotHdr = dotHdr;
+    this.dotHistogram = dotHistogram;
+    this.dotInfo = dotInfo;
+    this.dotInterval = dotInterval;
+    this.dotLevel = dotLevel;
+    this.dotPeaking = dotPeaking;
+    this.dotRaw = dotRaw;
+    this.dotStab = dotStab;
+    this.dotStyle = dotStyle;
+    this.dotSuperHdr = dotSuperHdr;
+    this.dotTimer = dotTimer;
+    this.dotVoice = dotVoice;
     this.flashOverlay = flashOverlay;
     this.focusRing = focusRing;
     this.gridLinesLayout = gridLinesLayout;
     this.histogramView = histogramView;
     this.imageCaptureButton = imageCaptureButton;
+    this.infoOverlay = infoOverlay;
+    this.levelCenterDot = levelCenterDot;
+    this.levelContainer = levelContainer;
+    this.levelLine = levelLine;
     this.modeAuto = modeAuto;
     this.modeLayout = modeLayout;
     this.modeManual = modeManual;
@@ -176,6 +304,9 @@ public final class ActivityMainBinding implements ViewBinding {
     this.parameterSlider = parameterSlider;
     this.parameterValueText = parameterValueText;
     this.presetLayout = presetLayout;
+    this.textInterval = textInterval;
+    this.textStab = textStab;
+    this.textTimer = textTimer;
     this.thumbnailView = thumbnailView;
     this.topMenuScroll = topMenuScroll;
     this.videoCaptureButton = videoCaptureButton;
@@ -223,6 +354,12 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.btn_import_lut;
+      LinearLayout btnImportLut = ViewBindings.findChildViewById(rootView, id);
+      if (btnImportLut == null) {
+        break missingId;
+      }
+
       id = R.id.btn_param_minus;
       TextView btnParamMinus = ViewBindings.findChildViewById(rootView, id);
       if (btnParamMinus == null) {
@@ -235,56 +372,98 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.btn_super_hdr_settings;
+      LinearLayout btnSuperHdrSettings = ViewBindings.findChildViewById(rootView, id);
+      if (btnSuperHdrSettings == null) {
+        break missingId;
+      }
+
       id = R.id.btn_toggle_flip;
-      TextView btnToggleFlip = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleFlip = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleFlip == null) {
         break missingId;
       }
 
+      id = R.id.btn_toggle_grading;
+      LinearLayout btnToggleGrading = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleGrading == null) {
+        break missingId;
+      }
+
       id = R.id.btn_toggle_grid;
-      TextView btnToggleGrid = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleGrid = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleGrid == null) {
         break missingId;
       }
 
       id = R.id.btn_toggle_hdr;
-      TextView btnToggleHdr = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleHdr = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleHdr == null) {
         break missingId;
       }
 
       id = R.id.btn_toggle_histogram;
-      TextView btnToggleHistogram = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleHistogram = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleHistogram == null) {
         break missingId;
       }
 
+      id = R.id.btn_toggle_info;
+      LinearLayout btnToggleInfo = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleInfo == null) {
+        break missingId;
+      }
+
+      id = R.id.btn_toggle_interval;
+      LinearLayout btnToggleInterval = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleInterval == null) {
+        break missingId;
+      }
+
+      id = R.id.btn_toggle_level;
+      LinearLayout btnToggleLevel = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleLevel == null) {
+        break missingId;
+      }
+
+      id = R.id.btn_toggle_peaking;
+      LinearLayout btnTogglePeaking = ViewBindings.findChildViewById(rootView, id);
+      if (btnTogglePeaking == null) {
+        break missingId;
+      }
+
       id = R.id.btn_toggle_raw;
-      TextView btnToggleRaw = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleRaw = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleRaw == null) {
         break missingId;
       }
 
       id = R.id.btn_toggle_stab;
-      TextView btnToggleStab = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleStab = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleStab == null) {
         break missingId;
       }
 
+      id = R.id.btn_toggle_style;
+      LinearLayout btnToggleStyle = ViewBindings.findChildViewById(rootView, id);
+      if (btnToggleStyle == null) {
+        break missingId;
+      }
+
       id = R.id.btn_toggle_super_hdr;
-      TextView btnToggleSuperHdr = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleSuperHdr = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleSuperHdr == null) {
         break missingId;
       }
 
       id = R.id.btn_toggle_timer;
-      TextView btnToggleTimer = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleTimer = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleTimer == null) {
         break missingId;
       }
 
       id = R.id.btn_toggle_voice;
-      TextView btnToggleVoice = ViewBindings.findChildViewById(rootView, id);
+      LinearLayout btnToggleVoice = ViewBindings.findChildViewById(rootView, id);
       if (btnToggleVoice == null) {
         break missingId;
       }
@@ -292,6 +471,96 @@ public final class ActivityMainBinding implements ViewBinding {
       id = R.id.countdown_text;
       TextView countdownText = ViewBindings.findChildViewById(rootView, id);
       if (countdownText == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_flip;
+      View dotFlip = ViewBindings.findChildViewById(rootView, id);
+      if (dotFlip == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_grading;
+      View dotGrading = ViewBindings.findChildViewById(rootView, id);
+      if (dotGrading == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_grid;
+      View dotGrid = ViewBindings.findChildViewById(rootView, id);
+      if (dotGrid == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_hdr;
+      View dotHdr = ViewBindings.findChildViewById(rootView, id);
+      if (dotHdr == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_histogram;
+      View dotHistogram = ViewBindings.findChildViewById(rootView, id);
+      if (dotHistogram == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_info;
+      View dotInfo = ViewBindings.findChildViewById(rootView, id);
+      if (dotInfo == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_interval;
+      View dotInterval = ViewBindings.findChildViewById(rootView, id);
+      if (dotInterval == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_level;
+      View dotLevel = ViewBindings.findChildViewById(rootView, id);
+      if (dotLevel == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_peaking;
+      View dotPeaking = ViewBindings.findChildViewById(rootView, id);
+      if (dotPeaking == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_raw;
+      View dotRaw = ViewBindings.findChildViewById(rootView, id);
+      if (dotRaw == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_stab;
+      View dotStab = ViewBindings.findChildViewById(rootView, id);
+      if (dotStab == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_style;
+      View dotStyle = ViewBindings.findChildViewById(rootView, id);
+      if (dotStyle == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_super_hdr;
+      View dotSuperHdr = ViewBindings.findChildViewById(rootView, id);
+      if (dotSuperHdr == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_timer;
+      View dotTimer = ViewBindings.findChildViewById(rootView, id);
+      if (dotTimer == null) {
+        break missingId;
+      }
+
+      id = R.id.dot_voice;
+      View dotVoice = ViewBindings.findChildViewById(rootView, id);
+      if (dotVoice == null) {
         break missingId;
       }
 
@@ -322,6 +591,30 @@ public final class ActivityMainBinding implements ViewBinding {
       id = R.id.image_capture_button;
       Button imageCaptureButton = ViewBindings.findChildViewById(rootView, id);
       if (imageCaptureButton == null) {
+        break missingId;
+      }
+
+      id = R.id.info_overlay;
+      TextView infoOverlay = ViewBindings.findChildViewById(rootView, id);
+      if (infoOverlay == null) {
+        break missingId;
+      }
+
+      id = R.id.level_center_dot;
+      View levelCenterDot = ViewBindings.findChildViewById(rootView, id);
+      if (levelCenterDot == null) {
+        break missingId;
+      }
+
+      id = R.id.level_container;
+      FrameLayout levelContainer = ViewBindings.findChildViewById(rootView, id);
+      if (levelContainer == null) {
+        break missingId;
+      }
+
+      id = R.id.level_line;
+      View levelLine = ViewBindings.findChildViewById(rootView, id);
+      if (levelLine == null) {
         break missingId;
       }
 
@@ -379,6 +672,24 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.text_interval;
+      TextView textInterval = ViewBindings.findChildViewById(rootView, id);
+      if (textInterval == null) {
+        break missingId;
+      }
+
+      id = R.id.text_stab;
+      TextView textStab = ViewBindings.findChildViewById(rootView, id);
+      if (textStab == null) {
+        break missingId;
+      }
+
+      id = R.id.text_timer;
+      TextView textTimer = ViewBindings.findChildViewById(rootView, id);
+      if (textTimer == null) {
+        break missingId;
+      }
+
       id = R.id.thumbnail_view;
       ImageView thumbnailView = ViewBindings.findChildViewById(rootView, id);
       if (thumbnailView == null) {
@@ -416,12 +727,17 @@ public final class ActivityMainBinding implements ViewBinding {
       }
 
       return new ActivityMainBinding((ConstraintLayout) rootView, bottomControlBar, btnExpandMenu,
-          btnParamMinus, btnParamPlus, btnToggleFlip, btnToggleGrid, btnToggleHdr,
-          btnToggleHistogram, btnToggleRaw, btnToggleStab, btnToggleSuperHdr, btnToggleTimer,
-          btnToggleVoice, countdownText, flashOverlay, focusRing, gridLinesLayout, histogramView,
-          imageCaptureButton, modeAuto, modeLayout, modeManual, parameterControlPanel,
+          btnImportLut, btnParamMinus, btnParamPlus, btnSuperHdrSettings, btnToggleFlip,
+          btnToggleGrading, btnToggleGrid, btnToggleHdr, btnToggleHistogram, btnToggleInfo,
+          btnToggleInterval, btnToggleLevel, btnTogglePeaking, btnToggleRaw, btnToggleStab,
+          btnToggleStyle, btnToggleSuperHdr, btnToggleTimer, btnToggleVoice, countdownText, dotFlip,
+          dotGrading, dotGrid, dotHdr, dotHistogram, dotInfo, dotInterval, dotLevel, dotPeaking,
+          dotRaw, dotStab, dotStyle, dotSuperHdr, dotTimer, dotVoice, flashOverlay, focusRing,
+          gridLinesLayout, histogramView, imageCaptureButton, infoOverlay, levelCenterDot,
+          levelContainer, levelLine, modeAuto, modeLayout, modeManual, parameterControlPanel,
           parameterLayout, parameterScrollView, parameterSlider, parameterValueText, presetLayout,
-          thumbnailView, topMenuScroll, videoCaptureButton, viewFinder, zoomLayout, zoomScrollView);
+          textInterval, textStab, textTimer, thumbnailView, topMenuScroll, videoCaptureButton,
+          viewFinder, zoomLayout, zoomScrollView);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

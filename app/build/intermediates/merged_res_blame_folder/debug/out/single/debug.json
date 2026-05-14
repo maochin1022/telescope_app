@@ -1,5 +1,9 @@
 [
     {
+        "merged": "com.example.telescopeapp-merged_res-28:/drawable_bg_menu_tile.xml.flat",
+        "source": "com.example.telescopeapp-main-30:/drawable/bg_menu_tile.xml"
+    },
+    {
         "merged": "com.example.telescopeapp-merged_res-28:/layout_activity_main.xml.flat",
         "source": "com.example.telescopeapp-main-30:/layout/activity_main.xml"
     },
