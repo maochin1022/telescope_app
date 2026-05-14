@@ -26,11 +26,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.telescopeapp.databinding.ActivityMainBinding
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
 enum class CameraMode { AUTO, PRO, HDR }
-enum class ManualParameter { ISO, SHUTTER, APERTURE, WB, EV, FOCUS }
+enum class ManualParameter { ISO, SHUTTER, APERTURE, WB, EV, FOCUS, CONTRAST, SATURATION }
 
 class MainActivity : AppCompatActivity() {
 
@@ -93,9 +94,40 @@ class MainActivity : AppCompatActivity() {
     private var isVoiceControlEnabled = false
     private var isRawEnabled = false
     private var isSuperHdrEnabled = false
-    private var isStabEnabled = true // Default ON for long focal lengths
+    private var currentStabMode = 3 // 0: OFF, 1: OIS, 2: STD (OIS+EIS), 3: PRO (OIS+EIS+Preview)
+    private var isDisplayInfoEnabled = false
     private var superHdrMinIso = 50
     private var superHdrMaxIso = 800
+    private var currentStyleIndex = 0 // Style LUT
+    private val styleNames = arrayOf("None", "Vivid", "Film", "B&W", "Cool")
+    private var isProGradingEnabled = false
+    private var gradingContrast = 1.0f
+    private var gradingSaturation = 1.0f
+    private var gradingExposure = 1.0f // Brightness multiplier
+    
+    private var isPeakingEnabled = false
+    private var isLevelEnabled = false
+    private var customLutBitmap: Bitmap? = null
+    private var customLutSize: Int = 0
+    private var currentLutName: String? = null
+    
+    // 縮時攝影與不活動偵測
+    private var timeLapseIntervalMs: Long = 0
+    private val timeLapseHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val inactivityHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var lastActivityTime: Long = System.currentTimeMillis()
+    private val INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000L // 10 分鐘
+    
+    private lateinit var sensorManager: android.hardware.SensorManager
+    private var accelerometer: android.hardware.Sensor? = null
+    private var magnetometer: android.hardware.Sensor? = null
+    private var gravityValues = FloatArray(3)
+    private var magneticValues = FloatArray(3)
+    
+    private val lutPickerLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { loadCustomLut(it) }
+    }
+    
     private val hdrImageBuffer = Collections.synchronizedList(mutableListOf<ByteArray>())
     private var lastAutoIso: Int = 100
     private var lastAutoExposureNs: Long = 10000000L
@@ -128,6 +160,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewBinding.imageCaptureButton.setOnClickListener {
+            resetInactivityTimer()
             if (timerMode > 0) {
                 startCountdown()
             } else {
@@ -145,81 +178,152 @@ class MainActivity : AppCompatActivity() {
             viewBinding.btnExpandMenu.animate().rotation(if (isTopMenuExpanded) 180f else 0f).setDuration(300).start()
         }
 
-        // --- Top Menu Listeners ---
-        val colorActive = android.graphics.Color.parseColor("#FFD700")
-        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
-
+        // --- Top Menu Listeners (Unified Framework) ---
         viewBinding.btnToggleGrid.setOnClickListener {
-            isGridLinesEnabled = !isGridLinesEnabled
-            viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
-            viewBinding.dotGrid.setBackgroundColor(if (isGridLinesEnabled) colorActive else colorInactive)
+            showMenuSelectionDialog("輔助線", arrayOf("關閉", "顯示")) { which ->
+                isGridLinesEnabled = (which == 1)
+                viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
+                updateTopMenuUI()
+            }
         }
 
         viewBinding.btnToggleHistogram.setOnClickListener {
-            isHistogramEnabled = !isHistogramEnabled
-            viewBinding.dotHistogram.setBackgroundColor(if (isHistogramEnabled) colorActive else colorInactive)
-            if (isHistogramEnabled) {
-                viewBinding.histogramView.visibility = android.view.View.VISIBLE
-                startHistogramAnalysis()
-            } else {
-                viewBinding.histogramView.visibility = android.view.View.GONE
-                stopHistogramAnalysis()
+            showMenuSelectionDialog("直方圖", arrayOf("關閉", "顯示")) { which ->
+                isHistogramEnabled = (which == 1)
+                if (isHistogramEnabled) {
+                    viewBinding.histogramView.visibility = android.view.View.VISIBLE
+                    startHistogramAnalysis()
+                } else {
+                    viewBinding.histogramView.visibility = android.view.View.GONE
+                    stopHistogramAnalysis()
+                }
+                updateTopMenuUI()
             }
         }
 
         viewBinding.btnToggleHdr.setOnClickListener {
-            currentCameraMode = if (currentCameraMode == CameraMode.HDR) CameraMode.AUTO else CameraMode.HDR
-            updateModeUI()
-            createCameraPreviewSession()
+            showMenuSelectionDialog("相機模式", arrayOf("標準 (AUTO)", "高動態 (HDR)")) { which ->
+                currentCameraMode = if (which == 1) CameraMode.HDR else CameraMode.AUTO
+                updateModeUI()
+                updateTopMenuUI()
+                createCameraPreviewSession()
+            }
         }
 
         viewBinding.btnToggleTimer.setOnClickListener {
-            timerMode = when(timerMode) {
-                0 -> 3
-                3 -> 10
-                else -> 0
+            showMenuSelectionDialog("倒數計時", arrayOf("關閉", "3秒", "10秒")) { which ->
+                timerMode = when(which) {
+                    1 -> 3
+                    2 -> 10
+                    else -> 0
+                }
+                updateTopMenuUI()
             }
-            viewBinding.textTimer.text = if (timerMode == 0) getString(R.string.menu_timer) else getString(R.string.timer_seconds, timerMode)
-            viewBinding.dotTimer.setBackgroundColor(if (timerMode > 0) colorActive else colorInactive)
         }
 
         viewBinding.btnToggleFlip.setOnClickListener {
-            isFlipEnabled = !isFlipEnabled
-            viewBinding.dotFlip.setBackgroundColor(if (isFlipEnabled) colorActive else colorInactive)
-            configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
-        }
-
-        viewBinding.btnToggleVoice.setOnClickListener {
-            isVoiceControlEnabled = !isVoiceControlEnabled
-            viewBinding.dotVoice.setBackgroundColor(if (isVoiceControlEnabled) colorActive else colorInactive)
-            if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
-        }
-
-        viewBinding.btnToggleRaw.setOnClickListener {
-            isRawEnabled = !isRawEnabled
-            viewBinding.dotRaw.setBackgroundColor(if (isRawEnabled) colorActive else colorInactive)
-            createCameraPreviewSession()
-        }
-
-        viewBinding.btnToggleSuperHdr.setOnClickListener {
-            isSuperHdrEnabled = !isSuperHdrEnabled
-            viewBinding.dotSuperHdr.setBackgroundColor(if (isSuperHdrEnabled) colorActive else colorInactive)
-            if (isSuperHdrEnabled) {
-                Toast.makeText(this, getString(R.string.shdr_enabled_toast), Toast.LENGTH_SHORT).show()
+            showMenuSelectionDialog("畫面翻轉 (180°)", arrayOf("正常", "翻轉")) { which ->
+                isFlipEnabled = (which == 1)
+                configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
+                updateTopMenuUI()
             }
         }
 
-        viewBinding.btnSuperHdrSettings.setOnClickListener {
-            showSuperHdrSettingsDialog()
+        viewBinding.btnToggleVoice.setOnClickListener {
+            showMenuSelectionDialog("聲控拍照", arrayOf("關閉", "開啟")) { which ->
+                isVoiceControlEnabled = (which == 1)
+                if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
+                updateTopMenuUI()
+            }
+        }
+
+        viewBinding.btnToggleRaw.setOnClickListener {
+            showMenuSelectionDialog("RAW 儲存", arrayOf("關閉 (JPG Only)", "開啟 (RAW+JPG)")) { which ->
+                isRawEnabled = (which == 1)
+                updateTopMenuUI()
+                createCameraPreviewSession()
+            }
+        }
+
+        viewBinding.btnToggleSuperHdr.setOnClickListener {
+            showMenuSelectionDialog("Super HDR", arrayOf("關閉", "開啟", "設定範圍...")) { which ->
+                when (which) {
+                    0 -> isSuperHdrEnabled = false
+                    1 -> {
+                        isSuperHdrEnabled = true
+                        Toast.makeText(this, "Super HDR Enabled", Toast.LENGTH_SHORT).show()
+                    }
+                    2 -> showSuperHdrSettingsDialog()
+                }
+                updateTopMenuUI()
+            }
+        }
+
+        viewBinding.btnToggleInfo.setOnClickListener {
+            showMenuSelectionDialog("資訊顯示", arrayOf("關閉", "開啟")) { which ->
+                isDisplayInfoEnabled = (which == 1)
+                viewBinding.info_overlay.visibility = if (isDisplayInfoEnabled) android.view.View.VISIBLE else android.view.View.GONE
+                updateTopMenuUI()
+                updateInfoOverlay()
+            }
+        }
+
+        viewBinding.btnToggleStyle.setOnClickListener {
+            showLutManagerDialog() // 已經是獨立的清單框架
+        }
+
+        viewBinding.btnToggleGrading.setOnClickListener {
+            showMenuSelectionDialog("專業調色", arrayOf("關閉", "開啟")) { which ->
+                isProGradingEnabled = (which == 1)
+                updateLutEffect()
+                updateTopMenuUI()
+                setupManualParameters()
+            }
+        }
+
+        viewBinding.btnTogglePeaking.setOnClickListener {
+            showMenuSelectionDialog("峰值對焦", arrayOf("關閉", "開啟")) { which ->
+                isPeakingEnabled = (which == 1)
+                updateLutEffect()
+                updateTopMenuUI()
+            }
+        }
+
+        viewBinding.btnToggleLevel.setOnClickListener {
+            showMenuSelectionDialog("水平儀", arrayOf("關閉", "開啟")) { which ->
+                isLevelEnabled = (which == 1)
+                viewBinding.levelContainer.visibility = if (isLevelEnabled) android.view.View.VISIBLE else android.view.View.GONE
+                updateTopMenuUI()
+            }
         }
 
         viewBinding.btnToggleStab.setOnClickListener {
-            isStabEnabled = !isStabEnabled
-            viewBinding.dotStab.setBackgroundColor(if (isStabEnabled) colorActive else colorInactive)
-            createCameraPreviewSession()
+            val modes = arrayOf("關閉", "僅硬體 (OIS)", "標準 (OIS+EIS)", "專業穩定 (Pro)")
+            showMenuSelectionDialog("穩定器模式", modes) { which ->
+                currentStabMode = which
+                updateTopMenuUI()
+                createCameraPreviewSession()
+            }
+        }
+
+        viewBinding.btnToggleInterval.setOnClickListener {
+            val options = arrayOf("關閉", "5秒", "10秒", "30秒", "1分鐘", "5分鐘")
+            showMenuSelectionDialog("縮時攝影間隔", options) { which ->
+                timeLapseIntervalMs = when(which) {
+                    1 -> 5000L
+                    2 -> 10000L
+                    3 -> 30000L
+                    4 -> 60000L
+                    5 -> 300000L
+                    else -> 0L
+                }
+                updateTimeLapseLogic()
+                updateTopMenuUI()
+            }
         }
 
         viewBinding.viewFinder.setOnTouchListener { _, event ->
+            resetInactivityTimer()
             if (event.action == android.view.MotionEvent.ACTION_DOWN) {
                 triggerTouchToFocus(event.x, event.y)
                 true
@@ -227,6 +331,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
+            resetInactivityTimer()
             if (currentManualParam != null) {
                 viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, value)
             }
@@ -234,6 +339,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewBinding.btnParamMinus.setOnClickListener {
+            resetInactivityTimer()
             if (currentManualParam == null) return@setOnClickListener
             val step = when(currentManualParam) {
                 ManualParameter.ISO -> 50f
@@ -249,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         }
         
         viewBinding.btnParamPlus.setOnClickListener {
+            resetInactivityTimer()
             if (currentManualParam == null) return@setOnClickListener
             val step = when(currentManualParam) {
                 ManualParameter.ISO -> 50f
@@ -318,6 +425,10 @@ class MainActivity : AppCompatActivity() {
         mediaActionSound = android.media.MediaActionSound().apply {
             load(android.media.MediaActionSound.SHUTTER_CLICK)
         }
+        
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+        accelerometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+        magnetometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
 
         viewBinding.thumbnailView.setOnClickListener {
             lastMediaUri?.let { uri ->
@@ -340,6 +451,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        accelerometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+        magnetometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         startBackgroundThread()
         if (viewBinding.viewFinder.isAvailable) {
             openCamera(currentCameraId ?: return)
@@ -349,9 +462,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        super.onPause()
+        sensorManager.unregisterListener(sensorListener)
         closeCamera()
         stopBackgroundThread()
-        super.onPause()
     }
 
     private fun startBackgroundThread() {
@@ -718,19 +832,43 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             
+            // 曝光補償 (僅在 AE 開啟時有效，即 AUTO/HDR 模式)
+            if (currentCameraMode != CameraMode.PRO) {
+                set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
+            }
+            
             // 防手震設定 (OIS + EIS)
-            if (isStabEnabled) {
-                // 嘗試開啟 EIS (電子防手震)
-                if (supportedEisModes?.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true) {
-                    set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+            when (currentStabMode) {
+                0 -> { // OFF
+                    set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+                    set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
                 }
-                // 嘗試開啟 OIS (光學防手震)
-                if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
-                    set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                1 -> { // OIS ONLY
+                    set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
+                    if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
+                        set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                    }
                 }
-            } else {
-                set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
-                set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
+                2 -> { // STD (OIS + EIS)
+                    if (supportedEisModes?.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true) {
+                        set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+                    }
+                    if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
+                        set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                    }
+                }
+                3 -> { // PRO (OIS + EIS + Preview)
+                    if (supportedEisModes?.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON) == true) {
+                        set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && 
+                        supportedEisModes?.contains(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION) == true) {
+                        set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_PREVIEW_STABILIZATION)
+                    }
+                    if (supportedOisModes?.contains(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON) == true) {
+                        set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_ON)
+                    }
+                }
             }
 
             /*
@@ -759,8 +897,165 @@ class MainActivity : AppCompatActivity() {
             if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) {
                 lastAutoIso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: lastAutoIso
                 lastAutoExposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: lastAutoExposureNs
+                if (isDisplayInfoEnabled) {
+                    runOnUiThread { updateInfoOverlay() }
+                }
             }
         }
+    }
+
+    private fun updateInfoOverlay() {
+        if (!isDisplayInfoEnabled) return
+        val iso = if (currentCameraMode == CameraMode.PRO) currentIso else lastAutoIso
+        val expNs = if (currentCameraMode == CameraMode.PRO) currentExposureNs else lastAutoExposureNs
+        
+        val sec = expNs / 1_000_000_000.0
+        val shutterStr = if (sec >= 1.0) String.format(Locale.US, "%.1fs", sec) else "1/${Math.round(1.0 / sec)}s"
+        
+        val wbStr = if (currentCameraMode == CameraMode.PRO) {
+            when (currentWbMode) {
+                CaptureRequest.CONTROL_AWB_MODE_AUTO -> "AUTO"
+                CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT -> "DAY"
+                CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> "CLD"
+                CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT -> "FLU"
+                CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT -> "INC"
+                else -> "AUTO"
+            }
+        } else "AUTO"
+
+        val apertureStr = currentAperture?.let { String.format(Locale.US, "F%.2f", it) } ?: ""
+        viewBinding.info_overlay.text = String.format(Locale.US, "ISO %d | S %s | %s %s", iso, shutterStr, apertureStr, wbStr)
+    }
+
+    private fun updateLutEffect() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+
+        var finalEffect: android.graphics.RenderEffect? = null
+
+        // 1. 一級校正 (Primary Correction)
+        val primaryMatrix = ColorMatrix().apply {
+            // Exposure (Brightness)
+            if (gradingExposure != 1.0f) {
+                val scale = gradingExposure
+                postConcat(ColorMatrix(floatArrayOf(
+                    scale, 0f, 0f, 0f, 0f,
+                    0f, scale, 0f, 0f, 0f,
+                    0f, 0f, scale, 0f, 0f,
+                    0f, 0f, 0f, 1f, 0f
+                )))
+            }
+            // Contrast
+            if (gradingContrast != 1.0f) {
+                val scale = gradingContrast
+                val translate = (-.5f * scale + .5f) * 255f
+                postConcat(ColorMatrix(floatArrayOf(
+                    scale, 0f, 0f, 0f, translate,
+                    0f, scale, 0f, 0f, translate,
+                    0f, 0f, scale, 0f, translate,
+                    0f, 0f, 0f, 1f, 0f
+                )))
+            }
+            // Saturation
+            if (gradingSaturation != 1.0f) {
+                val satMatrix = ColorMatrix()
+                satMatrix.setSaturation(gradingSaturation)
+                postConcat(satMatrix)
+            }
+        }
+        val primaryEffect = android.graphics.RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(primaryMatrix))
+        finalEffect = primaryEffect
+
+        // 2. 套用還原 LUT (Technical LUT: Log to Rec.709)
+        if (isProGradingEnabled) {
+            // 這裡模擬一個 Log 轉 709 的 S 型曲線 (S-Curve) 與色彩恢復
+            val logTo709Matrix = ColorMatrix(floatArrayOf(
+                1.2f, 0f, 0f, 0f, -20f,
+                0f, 1.2f, 0f, 0f, -20f,
+                0f, 0f, 1.2f, 0f, -20f,
+                0f, 0f, 0f, 1f, 0f
+            ))
+            val techEffect = android.graphics.RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(logTo709Matrix))
+            finalEffect = android.graphics.RenderEffect.createChainEffect(techEffect, finalEffect!!)
+        }
+
+        // 3. 疊加風格 LUT (Creative Style LUT)
+        if (currentStyleIndex > 0) {
+            val styleMatrix = ColorMatrix()
+            when (currentStyleIndex) {
+                1 -> styleMatrix.setSaturation(1.4f) // Vivid
+                2 -> { // Film
+                    styleMatrix.setSaturation(0.8f)
+                    styleMatrix.postConcat(ColorMatrix(floatArrayOf(
+                        1.1f, 0f, 0f, 0f, 5f,
+                        0f, 1.0f, 0f, 0f, 0f,
+                        0f, 0f, 0.9f, 0f, -5f,
+                        0f, 0f, 0f, 1f, 0f
+                    )))
+                }
+                3 -> styleMatrix.setSaturation(0f) // B&W
+                4 -> styleMatrix.postConcat(ColorMatrix(floatArrayOf( // Cool
+                    0.9f, 0f, 0f, 0f, -5f,
+                    0f, 1.0f, 0f, 0f, 0f,
+                    0f, 0f, 1.2f, 0f, 10f,
+                    0f, 0f, 0f, 1f, 0f
+                )))
+            }
+            val creativeEffect = android.graphics.RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(styleMatrix))
+            finalEffect = if (finalEffect != null) {
+                android.graphics.RenderEffect.createChainEffect(creativeEffect, finalEffect)
+            } else {
+                creativeEffect
+            }
+        }
+
+        // 4. 客製化 .cube LUT
+        if (customLutBitmap != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val lutShaderCode = """
+                uniform shader content;
+                uniform shader lut;
+                uniform float lutSize;
+                half4 main(float2 fragCoord) {
+                    half4 color = content.eval(fragCoord);
+                    float r = clamp(color.r, 0.0, 1.0) * (lutSize - 1.0);
+                    float g = clamp(color.g, 0.0, 1.0) * (lutSize - 1.0);
+                    float b = clamp(color.b, 0.0, 1.0) * (lutSize - 1.0);
+                    float blue_i = floor(b);
+                    float blue_f = b - blue_i;
+                    auto sampleLut = [&](float ri, float gi, float bi) {
+                        float quad_x = mod(bi, sqrt(lutSize)) * lutSize + ri;
+                        float quad_y = floor(bi / sqrt(lutSize)) * lutSize + gi;
+                        return lut.eval(float2(quad_x, quad_y));
+                    };
+                    return mix(sampleLut(r, g, blue_i), sampleLut(r, g, blue_i + 1.0), blue_f);
+                }
+            """.trimIndent()
+            val lutShader = android.graphics.RuntimeShader(lutShaderCode)
+            lutShader.setFloatUniform("lutSize", customLutSize.toFloat())
+            lutShader.setInputBuffer("lut", android.graphics.BitmapShader(customLutBitmap!!, android.graphics.Shader.TileMode.CLAMP, android.graphics.Shader.TileMode.CLAMP))
+            val lutEffect = android.graphics.RenderEffect.createRuntimeShaderEffect(lutShader, "content")
+            finalEffect = if (finalEffect != null) android.graphics.RenderEffect.createChainEffect(lutEffect, finalEffect) else lutEffect
+        }
+
+        // 5. 峰值對焦 (Focus Peaking)
+        if (isPeakingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val peakingShaderCode = """
+                uniform shader content;
+                half4 main(float2 fragCoord) {
+                    half4 color = content.eval(fragCoord);
+                    float2 uv = fragCoord;
+                    float offset = 1.0;
+                    float edge = abs(content.eval(uv + float2(0, -offset)).g - content.eval(uv + float2(0, offset)).g) +
+                                 abs(content.eval(uv + float2(-offset, 0)).g - content.eval(uv + float2(offset, 0)).g);
+                    if (edge > 0.08) return half4(0.0, 1.0, 0.0, 1.0);
+                    return color;
+                }
+            """.trimIndent()
+            val peakingShader = android.graphics.RuntimeShader(peakingShaderCode)
+            val peakingEffect = android.graphics.RenderEffect.createRuntimeShaderEffect(peakingShader, "content")
+            finalEffect = if (finalEffect != null) android.graphics.RenderEffect.createChainEffect(peakingEffect, finalEffect) else peakingEffect
+        }
+
+        viewBinding.viewFinder.setRenderEffect(finalEffect)
     }
 
     private fun triggerShutterEffect() {
@@ -806,6 +1101,12 @@ class MainActivity : AppCompatActivity() {
             val requests = mutableListOf<CaptureRequest>()
             
             if (isSuperHdrEnabled) {
+                // AUTO 模式下先同步參數以避免黑圖
+                if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) {
+                    currentIso = lastAutoIso
+                    currentExposureNs = lastAutoExposureNs
+                }
+
                 // Super HDR: 2 shots with different ISOs
                 // Shot 1: Min ISO (Protect Highlights)
                 requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
@@ -866,7 +1167,12 @@ class MainActivity : AppCompatActivity() {
             val bmp1 = android.graphics.BitmapFactory.decodeByteArray(bytes1, 0, bytes1.size)
             val bmp2 = android.graphics.BitmapFactory.decodeByteArray(bytes2, 0, bytes2.size)
             
-            if (bmp1 == null || bmp2 == null) return
+            if (bmp1 == null || bmp2 == null) {
+                Log.e(TAG, "Failed to decode bitmaps for HDR: bmp1=$bmp1, bmp2=$bmp2")
+                bmp1?.recycle()
+                bmp2?.recycle()
+                return
+            }
             
             // 合成：使用 Alpha 疊加 (簡單曝光融合)
             val result = android.graphics.Bitmap.createBitmap(bmp1.width, bmp1.height, bmp1.config)
@@ -920,37 +1226,62 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveImage(bytes: ByteArray) {
-        val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
-        val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Camera")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-        }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-        uri?.let {
-            contentResolver.openOutputStream(it)?.use { output ->
-                output.write(bytes)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                contentResolver.update(it, contentValues, null, null)
-            }
-            lastMediaUri = it
-            runOnUiThread {
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        val thumbnail = contentResolver.loadThumbnail(it, android.util.Size(128, 128), null)
-                        viewBinding.thumbnailView.setImageBitmap(thumbnail)
-                    } else {
-                        viewBinding.thumbnailView.setImageURI(it)
+        backgroundHandler?.post {
+            try {
+                var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                
+                // 套用色彩校正與 LUT 到 JPG
+                if (isProGradingEnabled || currentStyleIndex > 0 || customLutBitmap != null) {
+                    val resultBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(resultBitmap)
+                    val cm = ColorMatrix()
+                    if (isProGradingEnabled) {
+                        cm.setScale(gradingExposure, gradingExposure, gradingExposure, 1f)
+                        val sat = ColorMatrix()
+                        sat.setSaturation(gradingSaturation)
+                        cm.postConcat(sat)
                     }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to load image thumbnail", e)
+                    val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
+                    canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                    bitmap = resultBitmap
                 }
+
+                val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Camera")
+                        put(MediaStore.Images.Media.IS_PENDING, 1)
+                    }
+                }
+                val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                uri?.let {
+                    contentResolver.openOutputStream(it)?.use { output ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        contentValues.clear()
+                        contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
+                        contentResolver.update(it, contentValues, null, null)
+                    }
+                    lastMediaUri = it
+                    runOnUiThread {
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val thumbnail = contentResolver.loadThumbnail(it, android.util.Size(128, 128), null)
+                                viewBinding.thumbnailView.setImageBitmap(thumbnail)
+                            } else {
+                                viewBinding.thumbnailView.setImageURI(it)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to load image thumbnail", e)
+                        }
+                    }
+                }
+                runOnUiThread { Toast.makeText(this@MainActivity, getString(R.string.photo_saved), Toast.LENGTH_SHORT).show() }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save image", e)
             }
         }
     }
@@ -1078,15 +1409,14 @@ class MainActivity : AppCompatActivity() {
         // Update Top Menu HDR status dot
         viewBinding.dotHdr.setBackgroundColor(if (currentCameraMode == CameraMode.HDR) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
 
-        if (currentCameraMode == CameraMode.PRO) {
-            viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
-            if (currentManualParam != null) {
-                viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
-            }
+        // AUTO/HDR 模式也允許調整 EV
+        viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
+        setupManualParameters()
+
+        if (currentManualParam != null) {
+            viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
         } else {
             viewBinding.parameterControlPanel.visibility = android.view.View.GONE
-            viewBinding.parameterScrollView.visibility = android.view.View.GONE
-            currentManualParam = null
         }
         
         // 直方圖狀態由其獨立開關控制，不受模式影響
@@ -1097,21 +1427,114 @@ class MainActivity : AppCompatActivity() {
             viewBinding.histogramView.visibility = android.view.View.GONE
             stopHistogramAnalysis()
         }
+        updateTopMenuUI()
         updatePreview()
+    }
+
+    private fun updateTopMenuUI() {
+        val colorActiveText = android.graphics.Color.parseColor("#000000")
+        val colorInactiveText = android.graphics.Color.parseColor("#FFFFFF")
+        val colorDotActive = android.graphics.Color.parseColor("#FFD700")
+        val colorDotInactive = android.graphics.Color.parseColor("#FFFFFF")
+
+        fun setTileStyle(tile: android.view.View, isActive: Boolean, dot: android.view.View? = null) {
+            tile.setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_menu_tile)
+            if (tile is android.view.ViewGroup) {
+                for (i in 0 until tile.childCount) {
+                    val child = tile.getChildAt(i)
+                    if (child is android.widget.TextView) {
+                        child.setTextColor(if (isActive) colorActiveText else colorInactiveText)
+                    }
+                }
+            }
+            dot?.setBackgroundColor(if (isActive) colorDotActive else colorDotInactive)
+        }
+
+        setTileStyle(viewBinding.btnToggleGrid, isGridLinesEnabled, viewBinding.dotGrid)
+        setTileStyle(viewBinding.btnToggleHistogram, isHistogramEnabled, viewBinding.dotHistogram)
+        setTileStyle(viewBinding.btnToggleHdr, currentCameraMode == CameraMode.HDR, viewBinding.dotHdr)
+        setTileStyle(viewBinding.btnToggleTimer, timerMode > 0, viewBinding.dotTimer)
+        setTileStyle(viewBinding.btnToggleFlip, isFlipEnabled, viewBinding.dotFlip)
+        setTileStyle(viewBinding.btnToggleVoice, isVoiceControlEnabled, viewBinding.dotVoice)
+        setTileStyle(viewBinding.btnToggleRaw, isRawEnabled, viewBinding.dotRaw)
+        setTileStyle(viewBinding.btnToggleInfo, isDisplayInfoEnabled, viewBinding.dot_info)
+        setTileStyle(viewBinding.btnToggleStyle, currentStyleIndex > 0, viewBinding.dot_style)
+        setTileStyle(viewBinding.btnToggleGrading, isProGradingEnabled, viewBinding.dot_grading)
+        setTileStyle(viewBinding.btnTogglePeaking, isPeakingEnabled, viewBinding.dot_peaking)
+        setTileStyle(viewBinding.btnToggleLevel, isLevelEnabled, viewBinding.dot_level)
+        
+        // Super HDR tile has a slightly different structure (nested)
+        viewBinding.btnToggleSuperHdr.parent?.let { parent ->
+            if (parent is android.view.ViewGroup) {
+                parent.setBackgroundResource(if (isSuperHdrEnabled) R.drawable.bg_pill_button_active else R.drawable.bg_menu_tile)
+                // Update children text and dots
+                for (i in 0 until viewBinding.btnToggleSuperHdr.childCount) {
+                    val v = viewBinding.btnToggleSuperHdr.getChildAt(i)
+                    if (v is android.widget.TextView) v.setTextColor(if (isSuperHdrEnabled) colorActiveText else colorInactiveText)
+                    if (v.id == R.id.dot_super_hdr) v.setBackgroundColor(if (isSuperHdrEnabled) colorDotActive else colorDotInactive)
+                }
+                // Also handle the settings part text (the triangle)
+                for (i in 0 until viewBinding.btnSuperHdrSettings.childCount) {
+                    val v = viewBinding.btnSuperHdrSettings.getChildAt(i)
+                    if (v is android.widget.TextView) v.setTextColor(if (isSuperHdrEnabled) colorActiveText else colorInactiveText)
+                }
+                // The settings part background should be semi-transparent even when active
+                viewBinding.btnSuperHdrSettings.setBackgroundColor(if (isSuperHdrEnabled) android.graphics.Color.parseColor("#20000000") else android.graphics.Color.parseColor("#40000000"))
+            }
+        }
+
+        setTileStyle(viewBinding.btnToggleStab, currentStabMode > 0, viewBinding.dotStab)
+        setTileStyle(viewBinding.btnToggleInterval, timeLapseIntervalMs > 0, viewBinding.dot_interval)
+        
+        // Update Stab Text based on mode
+        viewBinding.textStab.text = when(currentStabMode) {
+            0 -> "Stab Off"
+            1 -> "OIS Only"
+            2 -> "STD Stab"
+            3 -> "Pro Stab"
+            else -> "Stab"
+        }
+
+        // Update Interval Text
+        viewBinding.text_interval.text = if (timeLapseIntervalMs == 0L) "縮時關閉" else "${timeLapseIntervalMs/1000}s 縮時"
     }
 
     private fun setupManualParameters() {
         val colorActive = android.graphics.Color.parseColor("#FFD700") // Gold for active param
         val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
         
-        val params = listOf(
-            Pair(ManualParameter.ISO, "ISO"),
-            Pair(ManualParameter.SHUTTER, "S"),
-            Pair(ManualParameter.APERTURE, "F"),
-            Pair(ManualParameter.WB, "WB"),
-            Pair(ManualParameter.EV, "EV"),
-            Pair(ManualParameter.FOCUS, "AF/MF")
-        )
+        val params = if (currentCameraMode == CameraMode.PRO) {
+            mutableListOf(
+                Pair(ManualParameter.ISO, "ISO"),
+                Pair(ManualParameter.SHUTTER, "S"),
+                Pair(ManualParameter.APERTURE, "F"),
+                Pair(ManualParameter.WB, "WB"),
+                Pair(ManualParameter.EV, "EV"),
+                Pair(ManualParameter.FOCUS, "AF/MF")
+            ).apply {
+                // 如果該鏡頭不支援可變光圈，則隱藏 F 選項
+                if (apertureList == null || apertureList!!.size <= 1) {
+                    removeIf { it.first == ManualParameter.APERTURE }
+                }
+                // 如果開啟了專業調色，顯示一級校正參數
+                if (isProGradingEnabled) {
+                    add(Pair(ManualParameter.CONTRAST, "CON"))
+                    add(Pair(ManualParameter.SATURATION, "SAT"))
+                }
+            }
+        } else {
+            // 非 PRO 模式下僅保留 EV 調整
+            listOf(Pair(ManualParameter.EV, "EV"))
+        }
+
+        // 若切換模式後當前參數不適用，則切換至預設參數
+        if (currentCameraMode != CameraMode.PRO) {
+            if (currentManualParam != ManualParameter.EV) {
+                currentManualParam = ManualParameter.EV
+                // 更新滑桿範圍與初始值
+                updateSliderForParameter()
+            }
+        }
         
         viewBinding.parameterLayout.removeAllViews()
         paramTextViews.clear()
@@ -1175,6 +1598,8 @@ class MainActivity : AppCompatActivity() {
             ManualParameter.FOCUS -> {
                 if (value == 0f) "AF" else String.format(Locale.US, "MF %.2f", value)
             }
+            ManualParameter.CONTRAST -> "CON ${String.format(Locale.US, "%.1f", value)}"
+            ManualParameter.SATURATION -> "SAT ${String.format(Locale.US, "%.1f", value)}"
         }
     }
 
@@ -1212,6 +1637,21 @@ class MainActivity : AppCompatActivity() {
                 presets.add(Pair("MACRO", 0.1f))
                 presets.add(Pair("INF", 10f))
             }
+            ManualParameter.CONTRAST -> {
+                presets.add(Pair("Low", 0.8f))
+                presets.add(Pair("Std", 1.0f))
+                presets.add(Pair("High", 1.3f))
+            }
+            ManualParameter.SATURATION -> {
+                presets.add(Pair("B&W", 0.0f))
+                presets.add(Pair("Std", 1.0f))
+                presets.add(Pair("Vivid", 1.5f))
+            }
+            ManualParameter.APERTURE -> {
+                apertureList?.forEachIndexed { index, f ->
+                    presets.add(Pair(String.format(Locale.US, "f/%.1f", f), index.toFloat()))
+                }
+            }
             else -> {}
         }
         
@@ -1235,7 +1675,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateSliderForParameter() {
-        if (currentCameraMode != CameraMode.PRO || currentManualParam == null) {
+        val isGradingParam = currentManualParam == ManualParameter.CONTRAST || currentManualParam == ManualParameter.SATURATION
+        if ((currentCameraMode != CameraMode.PRO && !isGradingParam && currentManualParam != ManualParameter.EV) || currentManualParam == null) {
             viewBinding.parameterControlPanel.visibility = android.view.View.GONE
             return
         }
@@ -1296,6 +1737,18 @@ class MainActivity : AppCompatActivity() {
                     viewBinding.parameterSlider.stepSize = 0f
                     viewBinding.parameterSlider.value = manualFocusDistance.coerceIn(viewBinding.parameterSlider.valueFrom, viewBinding.parameterSlider.valueTo)
                 }
+                ManualParameter.CONTRAST -> {
+                    viewBinding.parameterSlider.valueFrom = 0.5f
+                    viewBinding.parameterSlider.valueTo = 2.0f
+                    viewBinding.parameterSlider.stepSize = 0f
+                    viewBinding.parameterSlider.value = gradingContrast
+                }
+                ManualParameter.SATURATION -> {
+                    viewBinding.parameterSlider.valueFrom = 0.0f
+                    viewBinding.parameterSlider.valueTo = 2.0f
+                    viewBinding.parameterSlider.stepSize = 0f
+                    viewBinding.parameterSlider.value = gradingSaturation
+                }
                 else -> {}
             }
         } catch (e: Exception) {
@@ -1308,6 +1761,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
             viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, value)
             onParameterSliderChanged(value)
+            updateInfoOverlay()
         }
     }
 
@@ -1339,21 +1793,20 @@ class MainActivity : AppCompatActivity() {
             }
             ManualParameter.EV -> {
                 currentEv = value.toInt()
-                // Wait, EV compensation requires AE_MODE_ON to work effectively.
-                // In PRO mode, we are turning AE_MODE_OFF if ISO/Shutter are set, so EV may be ignored.
-                // But we still store it.
             }
+            ManualParameter.CONTRAST -> gradingContrast = value
+            ManualParameter.SATURATION -> gradingSaturation = value
             ManualParameter.FOCUS -> manualFocusDistance = value
             else -> {}
         }
-        updatePreview()
+        updateLutEffect()
     }
 
     private fun startHistogramAnalysis() {
         if (histogramRunnable != null) return
         histogramRunnable = object : java.lang.Runnable {
             override fun run() {
-                if (currentCameraMode != CameraMode.PRO) {
+                if (!isHistogramEnabled) {
                     histogramRunnable = null
                     return
                 }
@@ -1495,10 +1948,244 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun stopVoiceListening() {
-        runOnUiThread {
-            speechRecognizer?.stopListening()
+    private fun showMenuSelectionDialog(title: String, options: Array<String>, onSelect: (Int) -> Unit) {
+        resetInactivityTimer()
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(options) { dialog, which ->
+                onSelect(which)
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun resetInactivityTimer() {
+        lastActivityTime = System.currentTimeMillis()
+        inactivityHandler.removeCallbacksAndMessages(null)
+        inactivityHandler.postDelayed({
+            if (timeLapseIntervalMs == 0L) {
+                Log.d(TAG, "Inactivity timeout: finishing app")
+                finish()
+            } else {
+                // 縮時攝影中，不關閉程式，但重啟計時以備之後使用
+                resetInactivityTimer()
+            }
+        }, INACTIVITY_TIMEOUT_MS)
+    }
+
+    private fun updateTimeLapseLogic() {
+        timeLapseHandler.removeCallbacksAndMessages(null)
+        if (timeLapseIntervalMs > 0) {
+            // 縮時攝影開啟：允許螢幕依照系統設定關閉以省電
+            window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            startTimeLapseTask()
+        } else {
+            // 縮時攝影關閉：恢復相機預設的「保持螢幕開啟」
+            window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    private fun startTimeLapseTask() {
+        timeLapseHandler.postDelayed(object : Runnable {
+            override fun run() {
+                if (timeLapseIntervalMs > 0) {
+                    takePhoto()
+                    timeLapseHandler.postDelayed(this, timeLapseIntervalMs)
+                }
+            }
+        }, timeLapseIntervalMs)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resetInactivityTimer()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        timeLapseHandler.removeCallbacksAndMessages(null)
+        inactivityHandler.removeCallbacksAndMessages(null)
+    }
+
+    private fun showLutManagerDialog() {
+        val lutDir = File(filesDir, "luts")
+        if (!lutDir.exists()) lutDir.mkdirs()
+        
+        val files = lutDir.listFiles { _, name -> name.endsWith(".cube") }?.toList() ?: emptyList()
+        val names = files.map { it.name }.toMutableList()
+        names.add(0, "None (Reset)")
+        
+        val builder = android.app.AlertDialog.Builder(this)
+        builder.setTitle("LUT 管理")
+        
+        val listView = android.widget.ListView(this)
+        val adapter = object : android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, names) {
+            override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                val view = super.getView(position, convertView, parent) as TextView
+                if (position > 0 && names[position] == currentLutName) {
+                    view.setTextColor(android.graphics.Color.YELLOW)
+                    view.text = "✓ " + names[position]
+                }
+                return view
+            }
+        }
+        listView.adapter = adapter
+        
+        listView.setOnItemClickListener { _, _, position, _ ->
+            if (position == 0) {
+                customLutBitmap = null
+                currentLutName = null
+                updateLutEffect()
+            } else {
+                loadCustomLut(android.net.Uri.fromFile(files[position - 1]))
+                currentLutName = files[position - 1].name
+            }
+        }
+        
+        listView.setOnItemLongClickListener { _, _, position, _ ->
+            if (position > 0) {
+                val file = files[position - 1]
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("管理: ${file.name}")
+                    .setItems(arrayOf("重新命名", "刪除")) { _, which ->
+                        when (which) {
+                            0 -> { // 重新命名
+                                val input = android.widget.EditText(this@MainActivity).apply {
+                                    setText(file.name.removeSuffix(".cube"))
+                                }
+                                android.app.AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("重新命名")
+                                    .setView(input)
+                                    .setPositiveButton("確定") { _, _ ->
+                                        val newName = input.text.toString().trim()
+                                        if (newName.isNotEmpty()) {
+                                            val newFile = File(file.parent, "$newName.cube")
+                                            if (file.renameTo(newFile)) {
+                                                if (currentLutName == file.name) currentLutName = newFile.name
+                                                showLutManagerDialog()
+                                            } else {
+                                                Toast.makeText(this@MainActivity, "更名失敗", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                    .setNegativeButton("取消", null)
+                                    .show()
+                            }
+                            1 -> { // 刪除
+                                android.app.AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("刪除 LUT")
+                                    .setMessage("確定要刪除 ${file.name} 嗎？")
+                                    .setPositiveButton("刪除") { _, _ ->
+                                        if (currentLutName == file.name) {
+                                            customLutBitmap = null
+                                            currentLutName = null
+                                            updateLutEffect()
+                                        }
+                                        file.delete()
+                                        showLutManagerDialog()
+                                    }
+                                    .setNegativeButton("取消", null)
+                                    .show()
+                            }
+                        }
+                    }
+                    .show()
+            }
+            true
+        }
+        
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(listView, LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            val btnImport = android.widget.Button(this@MainActivity).apply {
+                text = "匯入新檔案 (.cube)"
+                setOnClickListener { 
+                    lutPickerLauncher.launch("*/*")
+                }
+            }
+            addView(btnImport)
+        }
+        
+        builder.setView(layout)
+        builder.setNegativeButton("關閉", null)
+        builder.show()
+    }
+
+    private fun loadCustomLut(uri: android.net.Uri) {
+        try {
+            // 如果是外部路徑，先複製到內部儲存空間
+            val fileName = uri.lastPathSegment?.split("/")?.last() ?: "custom_${System.currentTimeMillis()}.cube"
+            val lutDir = File(filesDir, "luts")
+            if (!lutDir.exists()) lutDir.mkdirs()
+            val localFile = File(lutDir, fileName)
+            
+            if (!uri.toString().contains(filesDir.absolutePath)) {
+                contentResolver.openInputStream(uri)?.use { input ->
+                    localFile.outputStream().use { output -> input.copyTo(output) }
+                }
+            }
+            
+            val reader = localFile.bufferedReader()
+            var size = 0
+            val data = mutableListOf<Float>()
+            reader.forEachLine { line ->
+                val trimmed = line.trim()
+                if (trimmed.startsWith("LUT_3D_SIZE")) size = trimmed.split(" ").last().toInt()
+                else if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && !trimmed[0].isLetter()) {
+                    val parts = trimmed.split(Regex("\\s+"))
+                    if (parts.size >= 3) {
+                        data.add(parts[0].toFloat()); data.add(parts[1].toFloat()); data.add(parts[2].toFloat())
+                    }
+                }
+            }
+            if (size > 0 && data.size >= size * size * size * 3) {
+                customLutSize = size
+                val lutBitmap = Bitmap.createBitmap(size, size * size, Bitmap.Config.ARGB_8888)
+                for (b in 0 until size) {
+                    for (g in 0 until size) {
+                        for (r in 0 until size) {
+                            val idx = (b * size * size + g * size + r) * 3
+                            val color = Color.rgb((data[idx]*255).toInt(), (data[idx+1]*255).toInt(), (data[idx+2]*255).toInt())
+                            lutBitmap.setPixel(r, g + b * size, color)
+                        }
+                    }
+                }
+                customLutBitmap = lutBitmap
+                currentLutName = localFile.name
+                runOnUiThread { updateLutEffect(); Toast.makeText(this, "LUT 套用成功", Toast.LENGTH_SHORT).show() }
+            }
+        } catch (e: Exception) { Log.e(TAG, "LUT Error", e) }
+    }
+
+    private val sensorListener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(event: android.hardware.SensorEvent) {
+            if (!isLevelEnabled) return
+            if (event.sensor.type == android.hardware.Sensor.TYPE_ACCELEROMETER) {
+                System.arraycopy(event.values, 0, gravityValues, 0, 3)
+            } else if (event.sensor.type == android.hardware.Sensor.TYPE_MAGNETIC_FIELD) {
+                System.arraycopy(event.values, 0, magneticValues, 0, 3)
+            }
+
+            val r = FloatArray(9)
+            val i = FloatArray(9)
+            if (android.hardware.SensorManager.getRotationMatrix(r, i, gravityValues, magneticValues)) {
+                val orientation = FloatArray(3)
+                android.hardware.SensorManager.getOrientation(r, orientation)
+                val pitch = Math.toDegrees(orientation[1].toDouble()).toFloat()
+                val roll = Math.toDegrees(orientation[2].toDouble()).toFloat()
+                
+                runOnUiThread {
+                    viewBinding.levelLine.rotation = -roll
+                    viewBinding.levelLine.translationY = (pitch * 5).coerceIn(-100f, 100f)
+                    // 當接近水平時變色
+                    val color = if (Math.abs(roll) < 1.0 && Math.abs(pitch) < 1.0) 
+                        android.graphics.Color.GREEN else android.graphics.Color.WHITE
+                    viewBinding.levelLine.setBackgroundColor(color)
+                    viewBinding.levelCenterDot.setBackgroundColor(color)
+                }
+            }
+        }
+        override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
     }
 
     private fun showSuperHdrSettingsDialog() {

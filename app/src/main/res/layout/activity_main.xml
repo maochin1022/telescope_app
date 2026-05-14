@@ -36,6 +36,56 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
+    <!-- Info Overlay -->
+    <TextView
+        android:id="@+id/info_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:layout_marginEnd="16dp"
+        android:padding="8dp"
+        android:background="#80000000"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:text="ISO 100 | S 1/125s | F1.63 | WB AUTO" />
+
+    <!-- Virtual Horizon Level -->
+    <FrameLayout
+        android:id="@+id/level_container"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+        
+        <View
+            android:id="@+id/level_line"
+            android:layout_width="150dp"
+            android:layout_height="2dp"
+            android:layout_gravity="center"
+            android:background="#FFFFFF" />
+            
+        <View
+            android:id="@+id/level_center_dot"
+            android:layout_width="8dp"
+            android:layout_height="8dp"
+            android:layout_gravity="center"
+            android:background="#FFFFFF" />
+            
+        <!-- Reference frame -->
+        <View
+            android:layout_width="160dp"
+            android:layout_height="1dp"
+            android:layout_gravity="center"
+            android:background="#40FFFFFF" />
+    </FrameLayout>
+
     <!-- Top Settings Menu (Scrollable) -->
     <HorizontalScrollView
         android:id="@+id/top_menu_scroll"
@@ -157,6 +207,96 @@
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RAW" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- 顯示資訊 -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_info"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_info" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_info" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 濾鏡風格 (Style LUT) -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_style"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_style" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_style" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 專業調色 (Pro Grade) -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_grading"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_grading" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_grading" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 匯入 LUT -->
+            <LinearLayout
+                android:id="@+id/btn_import_lut"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LUTs" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 峰值對焦 (Peaking) -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_peaking"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_peaking" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_peaking" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
+            <!-- 水平儀 (Level) -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_level"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_level" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_level" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+            </LinearLayout>
+
             <!-- 超動態 -->
             <LinearLayout
                 android:layout_width="70dp"
@@ -181,13 +321,34 @@
                 <LinearLayout
                     android:id="@+id/btn_super_hdr_settings"
                     android:layout_width="match_parent"
-                    android:layout_height="20dp"
+                    android:layout_height="22dp"
                     android:background="#40000000"
                     android:gravity="center"
                     android:clickable="true"
                     android:focusable="true">
-                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="▼" android:textColor="#FFFFFF" android:textSize="10sp" />
+                    <TextView 
+                        android:layout_width="wrap_content" 
+                        android:layout_height="wrap_content" 
+                        android:text="▼" 
+                        android:textColor="#FFFFFF" 
+                        android:textSize="12sp"
+                        android:layout_marginTop="-2dp" />
                 </LinearLayout>
+            </LinearLayout>
+
+            <!-- 縮時攝影 (Interval) -->
+            <LinearLayout
+                android:id="@+id/btn_toggle_interval"
+                android:layout_width="70dp"
+                android:layout_height="70dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/bg_menu_tile"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+                <View android:id="@+id/dot_interval" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFFFFF" android:layout_marginBottom="4dp" />
+                <TextView android:id="@+id/text_interval" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_interval" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
 
             <!-- 防手震 -->
@@ -201,7 +362,7 @@
                 android:clickable="true"
                 android:focusable="true">
                 <View android:id="@+id/dot_stab" android:layout_width="6dp" android:layout_height="6dp" android:background="#FFD700" android:layout_marginBottom="4dp" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_stab" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
+                <TextView android:id="@+id/text_stab" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/menu_stab" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
     </HorizontalScrollView>

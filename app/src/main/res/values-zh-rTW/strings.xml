@@ -7,9 +7,15 @@
     <string name="menu_histogram">直方圖</string>
     <string name="menu_hdr">HDR</string>
     <string name="menu_timer">倒數</string>
-    <string name="menu_flip">鏡像</string>
+    <string name="menu_flip">翻轉</string>
     <string name="menu_voice">聲控</string>
     <string name="menu_raw">RAW</string>
+    <string name="menu_info">資訊</string>
+    <string name="menu_style">風格</string>
+    <string name="menu_grading">調色</string>
+    <string name="menu_peaking">峰值</string>
+    <string name="menu_level">水平</string>
+    <string name="menu_interval">縮時</string>
     <string name="menu_super_hdr">超動態</string>
     <string name="menu_stab">防手震</string>
     

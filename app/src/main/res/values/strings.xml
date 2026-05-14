@@ -12,6 +12,12 @@
     <string name="menu_raw">RAW</string>
     <string name="menu_super_hdr">S.HDR</string>
     <string name="menu_stab">Stab</string>
+    <string name="menu_info">Info</string>
+    <string name="menu_style">Style</string>
+    <string name="menu_grading">Grade</string>
+    <string name="menu_peaking">Peaking</string>
+    <string name="menu_level">Level</string>
+    <string name="menu_interval">Interval</string>
     
     <!-- Modes -->
     <string name="mode_auto">AUTO</string>
