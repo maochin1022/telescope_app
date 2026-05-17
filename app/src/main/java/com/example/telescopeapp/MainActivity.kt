@@ -163,6 +163,7 @@ class MainActivity : AppCompatActivity() {
         return rotation
     }
     
+    private val lensFlipSettings = mutableMapOf<String, Boolean>()
     private var lastCaptureRotation = 0
     private var currentDeviceOrientation = 0
     private var orientationEventListener: android.view.OrientationEventListener? = null
@@ -289,6 +290,7 @@ class MainActivity : AppCompatActivity() {
         viewBinding.btnToggleFlip.setOnClickListener {
             resetInactivityTimer(); closeSubmenu()
             isFlipEnabled = !isFlipEnabled
+            currentCameraId?.let { lensFlipSettings[it] = isFlipEnabled }
             configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
             updateTopMenuUI()
         }
@@ -556,6 +558,18 @@ class MainActivity : AppCompatActivity() {
             val v = viewBinding.verticalParamSlider
             val step = if (v.stepSize > 0f) v.stepSize else (v.valueTo - v.valueFrom) * 0.01f
             v.value = (v.value - step).coerceAtLeast(v.valueFrom)
+        }
+
+        // 隱藏滑桿按鈕
+        viewBinding.btnParamHide.setOnClickListener {
+            resetInactivityTimer()
+            currentManualParam = null
+            updateModeUI()
+        }
+        viewBinding.btnVParamHide.setOnClickListener {
+            resetInactivityTimer()
+            currentVParam = null
+            updateModeUI()
         }
     }
 
@@ -1536,12 +1550,26 @@ class MainActivity : AppCompatActivity() {
 
             backCameras.sortBy { it.second }
 
-            runOnUiThread {
-                viewBinding.zoomLayout.removeAllViews()
-            lensTextViews.clear()
+            for ((index, camera) in backCameras.withIndex()) {
+                val isTelephoto = (index == backCameras.size - 1)
+                if (!lensFlipSettings.containsKey(camera.first)) {
+                    lensFlipSettings[camera.first] = isTelephoto
+                }
+            }
 
-            val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
-            val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
+            runOnUiThread {
+                if (currentCameraId == null && backCameras.isNotEmpty()) {
+                    currentCameraId = backCameras[0].first
+                }
+                currentCameraId?.let {
+                    isFlipEnabled = lensFlipSettings[it] ?: false
+                }
+
+                viewBinding.zoomLayout.removeAllViews()
+                lensTextViews.clear()
+
+                val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
+                val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
 
             // 依照用戶要求的標籤順序
             val zoomLabels = listOf("0.5x", "1x", "2x", "3.2x", "5x")
@@ -1565,6 +1593,8 @@ class MainActivity : AppCompatActivity() {
 
                     setOnClickListener {
                         currentCameraId = camera.first
+                        isFlipEnabled = lensFlipSettings[camera.first] ?: false
+                        
                         // 重置所有按鈕樣式
                         lensTextViews.forEach { 
                             it.setTextColor(colorInactive)
@@ -1625,38 +1655,36 @@ class MainActivity : AppCompatActivity() {
         setupStatusBlockListeners()
     }
 
+    private fun toggleOrSelectParam(param: ManualParameter) {
+        resetInactivityTimer()
+        when {
+            currentManualParam == param -> {
+                currentManualParam = null
+            }
+            currentVParam == param -> {
+                currentVParam = null
+            }
+            else -> {
+                if (currentManualParam == null) {
+                    currentManualParam = param
+                } else if (currentVParam == null) {
+                    currentVParam = param
+                } else {
+                    currentManualParam = param
+                }
+            }
+        }
+        updateModeUI()
+    }
+
     private fun setupStatusBlockListeners() {
         // 為專業狀態列的參數區塊添加點擊切換功能
-        viewBinding.statusEvBlock.setOnClickListener {
-            resetInactivityTimer()
-            currentManualParam = ManualParameter.EV
-            updateModeUI()
-        }
-        viewBinding.statusABlock.setOnClickListener {
-            resetInactivityTimer()
-            currentManualParam = ManualParameter.APERTURE
-            updateModeUI()
-        }
-        viewBinding.statusSBlock.setOnClickListener {
-            resetInactivityTimer()
-            if (currentManualParam == ManualParameter.SHUTTER) swapSliders()
-            else { currentManualParam = ManualParameter.SHUTTER; updateModeUI() }
-        }
-        viewBinding.statusIsoBlock.setOnClickListener {
-            resetInactivityTimer()
-            if (currentManualParam == ManualParameter.ISO) swapSliders()
-            else { currentManualParam = ManualParameter.ISO; updateModeUI() }
-        }
-        viewBinding.statusWbBlock.setOnClickListener {
-            resetInactivityTimer()
-            currentManualParam = ManualParameter.WB
-            updateModeUI()
-        }
-        viewBinding.statusFBlock.setOnClickListener {
-            resetInactivityTimer()
-            currentManualParam = ManualParameter.FOCUS
-            updateModeUI()
-        }
+        viewBinding.statusEvBlock.setOnClickListener { toggleOrSelectParam(ManualParameter.EV) }
+        viewBinding.statusABlock.setOnClickListener { toggleOrSelectParam(ManualParameter.APERTURE) }
+        viewBinding.statusSBlock.setOnClickListener { toggleOrSelectParam(ManualParameter.SHUTTER) }
+        viewBinding.statusIsoBlock.setOnClickListener { toggleOrSelectParam(ManualParameter.ISO) }
+        viewBinding.statusWbBlock.setOnClickListener { toggleOrSelectParam(ManualParameter.WB) }
+        viewBinding.statusFBlock.setOnClickListener { toggleOrSelectParam(ManualParameter.FOCUS) }
 
         // --- AUTO HUD 快速接管 ---
         viewBinding.hudSBlock.setOnClickListener {
@@ -2136,6 +2164,10 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Error updating slider", e)
         }
         
+        viewBinding.parameterSlider.setLabelFormatter { valVal ->
+            currentManualParam?.let { formatParameterValue(it, valVal) } ?: valVal.toString()
+        }
+        
         populatePresets(currentManualParam!!)
         val displayText = formatParameterValue(currentManualParam!!, viewBinding.parameterSlider.value)
         viewBinding.parameterValueText.text = displayText
@@ -2177,6 +2209,9 @@ class MainActivity : AppCompatActivity() {
             v.valueTo = h.valueTo
             v.stepSize = h.stepSize
             v.value = h.value.coerceIn(h.valueFrom, h.valueTo)
+            v.setLabelFormatter { valVal ->
+                currentManualParam?.let { formatParameterValue(it, valVal) } ?: valVal.toString()
+            }
         } catch (e: Exception) { Log.e(TAG, "verticalSlider setup", e) }
 
         // 顯示垂直滑桿
@@ -2285,7 +2320,7 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) { Log.e(TAG, "setupVSliderForParam", e); return }
 
-        showVerticalSlider(label, from, to, step, value) { v -> onParamChanged(param, v) }
+        showVerticalSlider(param, label, from, to, step, value) { v -> onParamChanged(param, v) }
     }
 
     /** 參數值變更的統一入口（H slider 和 V slider 都呼叫此函式） */
@@ -2437,6 +2472,7 @@ class MainActivity : AppCompatActivity() {
      * 垂直滑桿旋轉 270°：上滑 = 從 valueFrom 到 valueTo（說明標譤會顯示 +/-）。
      */
     fun showVerticalSlider(
+        param: ManualParameter,
         label: String,
         valueFrom: Float,
         valueTo: Float,
@@ -2453,6 +2489,9 @@ class MainActivity : AppCompatActivity() {
             v.valueTo = valueTo
             v.stepSize = stepSize
             v.value = value.coerceIn(valueFrom, valueTo)
+            v.setLabelFormatter { valVal ->
+                formatParameterValue(param, valVal)
+            }
         } catch (e: Exception) { Log.e(TAG, "showVerticalSlider", e) }
         v.addOnChangeListener { _, value, fromUser ->
             if (fromUser && !isUpdatingSlider) {

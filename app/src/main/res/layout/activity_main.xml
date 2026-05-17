@@ -507,6 +507,17 @@
             android:textSize="24sp"
             android:textStyle="bold"
             android:background="?selectableItemBackgroundBorderless" />
+
+        <TextView
+            android:id="@+id/btn_v_param_hide"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:text="✕"
+            android:textColor="#88FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:background="?selectableItemBackgroundBorderless" />
     </LinearLayout>
 
     <!-- Parameter Control Panel (Visible only when a parameter is selected in PRO mode) -->
@@ -523,18 +534,37 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Value Display (Clickable for Input) -->
-        <TextView
-            android:id="@+id/parameter_value_text"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:padding="8dp"
-            android:text="AUTO"
-            android:textColor="#FFD700"
-            android:textSize="16sp"
-            android:textStyle="bold"
-            android:background="?selectableItemBackground" />
+        <!-- Value Display (Clickable for Input) with Hide Button -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/parameter_value_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:padding="8dp"
+                android:text="AUTO"
+                android:textColor="#FFD700"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackground" />
+
+            <TextView
+                android:id="@+id/btn_param_hide"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:layout_marginEnd="12dp"
+                android:gravity="center"
+                android:text="✕"
+                android:textColor="#88FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackgroundBorderless" />
+        </RelativeLayout>
 
         <!-- Slider and +/- Buttons -->
         <LinearLayout
