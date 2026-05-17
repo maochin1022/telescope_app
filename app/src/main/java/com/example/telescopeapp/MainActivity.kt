@@ -121,6 +121,36 @@ class MainActivity : AppCompatActivity() {
     private var customLutSize: Int = 0
     private var currentLutName: String? = null
     
+    private fun getSupportedIsoPresets(): List<Int> {
+        val min = isoRange?.lower ?: 50
+        val max = isoRange?.upper ?: 3200
+        val baseList = listOf(50, 100, 200, 320, 400, 800, 1600, 3200, 6400, 12800)
+        val filtered = baseList.filter { it in min..max }.toMutableList()
+        if (filtered.isEmpty()) {
+            filtered.add(min)
+            filtered.add(max)
+        }
+        return filtered.distinct().sorted()
+    }
+
+    private fun getSupportedShutterPresets(): List<Double> {
+        val minNs = exposureRange?.lower ?: 1000000L
+        val maxNs = exposureRange?.upper ?: 1000000000L
+        val baseList = listOf(
+            1.0/8000, 1.0/4000, 1.0/2000, 1.0/1000, 1.0/500, 1.0/250, 1.0/125, 
+            1.0/60, 1.0/30, 1.0/15, 1.0/8, 1.0/4, 1.0/2, 1.0, 2.0, 4.0, 8.0, 15.0, 30.0
+        )
+        val filtered = baseList.filter { sec ->
+            val ns = (sec * 1_000_000_000).toLong()
+            ns in minNs..maxNs
+        }.toMutableList()
+        if (filtered.isEmpty()) {
+            filtered.add(minNs / 1_000_000_000.0)
+            filtered.add(maxNs / 1_000_000_000.0)
+        }
+        return filtered.distinct().sorted()
+    }
+    
     // 縮時攝影與不活動偵測
     private var timeLapseIntervalMs: Long = 0
     private val timeLapseHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -428,13 +458,22 @@ class MainActivity : AppCompatActivity() {
         magnetometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
 
         viewBinding.thumbnailView.setOnClickListener {
-            lastMediaUri?.let { uri ->
-                val mimeType = contentResolver.getType(uri) ?: "*/*"
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mimeType)
+            val intent = if (lastMediaUri != null) {
+                val mimeType = contentResolver.getType(lastMediaUri!!) ?: "*/*"
+                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    setDataAndType(lastMediaUri, mimeType)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
+            } else {
+                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                    type = "image/*"
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            try {
                 startActivity(intent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "無法開啟相簿", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -499,12 +538,59 @@ class MainActivity : AppCompatActivity() {
         speechRecognizer?.destroy()
     }
 
+    private fun loadLatestThumbnail() {
+        backgroundHandler?.post {
+            val projection = arrayOf(
+                MediaStore.Images.Media._ID,
+                MediaStore.Images.Media.DATE_TAKEN
+            )
+            val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+            val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            
+            try {
+                contentResolver.query(queryUri, projection, null, null, sortOrder)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                        val id = cursor.getLong(idColumn)
+                        val contentUri = android.content.ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                            id
+                        )
+                        lastMediaUri = contentUri
+                        
+                        val thumbnail = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            try {
+                                contentResolver.loadThumbnail(contentUri, Size(128, 128), null)
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else {
+                            null
+                        }
+                        
+                        runOnUiThread {
+                            viewBinding.thumbnailView.setPadding(0, 0, 0, 0)
+                            if (thumbnail != null) {
+                                viewBinding.thumbnailView.setImageBitmap(thumbnail)
+                            } else {
+                                viewBinding.thumbnailView.setImageURI(contentUri)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading latest thumbnail", e)
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         resetInactivityTimer()
         accelerometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         magnetometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         startBackgroundThread()
+        loadLatestThumbnail()
         if (viewBinding.viewFinder.isAvailable) {
             openCamera(currentCameraId ?: return)
         } else {
@@ -1575,7 +1661,8 @@ class MainActivity : AppCompatActivity() {
         // Update Top Menu HDR status dot
         viewBinding.dotHdr.setBackgroundColor(if (currentCameraMode == CameraMode.HDR) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
 
-        viewBinding.parameterScrollView.visibility = if (currentCameraMode == CameraMode.PRO) android.view.View.VISIBLE else android.view.View.GONE
+        // PRO mode: hide redundant parameter tabs — proStatusBar already handles selection
+        viewBinding.parameterScrollView.visibility = android.view.View.GONE
         
         // 同步 EV 面板狀態
         if (currentCameraMode != CameraMode.PRO && isEvEnabled) {
@@ -1583,10 +1670,10 @@ class MainActivity : AppCompatActivity() {
         } else {
             viewBinding.evPanel.visibility = android.view.View.GONE
         }
-        setupManualParameters()
 
         if (currentCameraMode == CameraMode.PRO) {
-            // PRO 模式：主動建立 H/V 滑桿（預設已在 setupModeSelectors 設好）
+            setupManualParameters()
+            // PRO 模式：主動建立 H/V 滑桿
             if (currentManualParam != null) {
                 updateSliderForParameter()
                 viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
@@ -1596,12 +1683,11 @@ class MainActivity : AppCompatActivity() {
             currentVParam?.let { setupVSliderForParam(it) }
                 ?: run { viewBinding.verticalSliderContainer.visibility = android.view.View.GONE }
         } else {
-            if (currentManualParam != null) {
-                viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
-            } else {
-                viewBinding.parameterControlPanel.visibility = android.view.View.GONE
-                viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
-            }
+            // AUTO/HDR 模式：只用 ev_panel，不用主滑桿和垂直滑桿
+            currentManualParam = null
+            currentVParam = null
+            viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
         }
         
         // 直方圖狀態由其獨立開關控制，不受模式影響
@@ -1719,36 +1805,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupManualParameters() {
-        val colorH       = android.graphics.Color.parseColor("#FFD700") // 金色 = H slider
-        val colorV       = android.graphics.Color.parseColor("#00CFFF") // 青色 = V slider
-        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
-
-        val params = if (currentCameraMode == CameraMode.PRO) {
-            mutableListOf(
-                Pair(ManualParameter.ISO,     "ISO"),
-                Pair(ManualParameter.SHUTTER, "S"),
-                Pair(ManualParameter.APERTURE,"F"),
-                Pair(ManualParameter.WB,      "WB"),
-                Pair(ManualParameter.EV,      "EV"),
-                Pair(ManualParameter.FOCUS,   "AF/MF")
-            ).apply {
-                if (apertureList == null || apertureList!!.size <= 1) {
-                    removeIf { it.first == ManualParameter.APERTURE }
-                }
-                if (isProGradingEnabled) {
-                    add(Pair(ManualParameter.CONTRAST,   "CON"))
-                    add(Pair(ManualParameter.SATURATION, "SAT"))
-                }
-            }
-        } else {
-            listOf(Pair(ManualParameter.EV, "EV"))
+        if (currentCameraMode != CameraMode.PRO) {
+            currentManualParam = null
+            currentVParam = null
+            viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
+            viewBinding.parameterScrollView.visibility = android.view.View.GONE
+            return
         }
 
-        if (currentCameraMode != CameraMode.PRO) {
-            if (currentManualParam != ManualParameter.EV) {
-                currentManualParam = ManualParameter.EV
-                currentVParam = null
-                updateSliderForParameter()
+        val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
+
+        val params = mutableListOf(
+            Pair(ManualParameter.ISO,     "ISO"),
+            Pair(ManualParameter.SHUTTER, "S"),
+            Pair(ManualParameter.APERTURE,"F"),
+            Pair(ManualParameter.WB,      "WB"),
+            Pair(ManualParameter.EV,      "EV"),
+            Pair(ManualParameter.FOCUS,   "AF/MF")
+        ).apply {
+            if (apertureList == null || apertureList!!.size <= 1) {
+                removeIf { it.first == ManualParameter.APERTURE }
+            }
+            if (isProGradingEnabled) {
+                add(Pair(ManualParameter.CONTRAST,   "CON"))
+                add(Pair(ManualParameter.SATURATION, "SAT"))
             }
         }
 
@@ -1801,13 +1882,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatParameterValue(param: ManualParameter, value: Float): String {
         return when (param) {
-            ManualParameter.ISO -> "ISO ${value.toInt()}"
+            ManualParameter.ISO -> {
+                val presets = getSupportedIsoPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                "ISO ${presets[idx]}"
+            }
             ManualParameter.SHUTTER -> {
-                val minNs = exposureRange?.lower ?: 1000000L
-                val maxNs = exposureRange?.upper ?: 1000000000L
-                val ratio = value / 100.0
-                val expNs = Math.exp(Math.log(minNs.toDouble()) + ratio * (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble())))
-                val sec = expNs / 1_000_000_000.0
+                val presets = getSupportedShutterPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                val sec = presets[idx]
                 if (sec >= 1.0) {
                     String.format(Locale.US, "S %.1fs", sec)
                 } else {
@@ -1848,17 +1931,20 @@ class MainActivity : AppCompatActivity() {
         
         when (param) {
             ManualParameter.ISO -> {
-                listOf(100f, 200f, 400f, 800f, 1600f, 3200f).forEach {
-                    presets.add(Pair(it.toInt().toString(), it))
+                val list = getSupportedIsoPresets()
+                list.forEachIndexed { index, iso ->
+                    presets.add(Pair(iso.toString(), index.toFloat()))
                 }
             }
             ManualParameter.SHUTTER -> {
-                val minNs = exposureRange?.lower ?: 1000000L
-                val maxNs = exposureRange?.upper ?: 1000000000L
-                listOf(1.0/1000, 1.0/500, 1.0/250, 1.0/125, 1.0/60, 1.0/30, 1.0/15, 1.0/4, 1.0).forEach { sec ->
-                    val expNs = (sec * 1_000_000_000).toLong().coerceIn(minNs, maxNs)
-                    val ratio = (Math.log(expNs.toDouble()) - Math.log(minNs.toDouble())) / (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))
-                    presets.add(Pair(if (sec >= 1.0) "1s" else "1/${Math.round(1.0/sec)}s", (ratio * 100).toFloat()))
+                val list = getSupportedShutterPresets()
+                list.forEachIndexed { index, sec ->
+                    val label = if (sec >= 1.0) {
+                        String.format(Locale.US, "%.1fs", sec)
+                    } else {
+                        "1/${Math.round(1.0/sec)}s"
+                    }
+                    presets.add(Pair(label, index.toFloat()))
                 }
             }
             ManualParameter.WB -> {
@@ -1926,19 +2012,23 @@ class MainActivity : AppCompatActivity() {
         try {
             when (currentManualParam) {
                 ManualParameter.ISO -> {
-                    viewBinding.parameterSlider.valueFrom = (isoRange?.lower?.toFloat() ?: 100f)
-                    viewBinding.parameterSlider.valueTo = (isoRange?.upper?.toFloat() ?: 3200f)
-                    viewBinding.parameterSlider.stepSize = 0f
-                    viewBinding.parameterSlider.value = currentIso.toFloat().coerceIn(viewBinding.parameterSlider.valueFrom, viewBinding.parameterSlider.valueTo)
+                    val presets = getSupportedIsoPresets()
+                    viewBinding.parameterSlider.valueFrom = 0f
+                    viewBinding.parameterSlider.valueTo = (presets.size - 1).toFloat()
+                    viewBinding.parameterSlider.stepSize = 1f
+                    val closestIdx = presets.mapIndexed { idx, v -> Pair(idx, Math.abs(v - currentIso)) }
+                        .minByOrNull { it.second }?.first ?: 0
+                    viewBinding.parameterSlider.value = closestIdx.toFloat()
                 }
                 ManualParameter.SHUTTER -> {
+                    val presets = getSupportedShutterPresets()
                     viewBinding.parameterSlider.valueFrom = 0f
-                    viewBinding.parameterSlider.valueTo = 100f
-                    viewBinding.parameterSlider.stepSize = 0f
-                    val minNs = exposureRange?.lower ?: 1000000L
-                    val maxNs = exposureRange?.upper ?: 1000000000L
-                    val ratio = (Math.log(currentExposureNs.toDouble()) - Math.log(minNs.toDouble())) / (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))
-                    viewBinding.parameterSlider.value = (ratio * 100f).toFloat().coerceIn(0f, 100f)
+                    viewBinding.parameterSlider.valueTo = (presets.size - 1).toFloat()
+                    viewBinding.parameterSlider.stepSize = 1f
+                    val currentSec = currentExposureNs / 1_000_000_000.0
+                    val closestIdx = presets.mapIndexed { idx, v -> Pair(idx, Math.abs(v - currentSec)) }
+                        .minByOrNull { it.second }?.first ?: 0
+                    viewBinding.parameterSlider.value = closestIdx.toFloat()
                 }
                 ManualParameter.APERTURE -> {
                     if (apertureList != null && apertureList!!.size > 1) {
@@ -2094,17 +2184,23 @@ class MainActivity : AppCompatActivity() {
         try {
             when(param) {
                 ManualParameter.ISO -> {
-                    from = isoRange?.lower?.toFloat() ?: 100f
-                    to   = isoRange?.upper?.toFloat() ?: 3200f
-                    value = currentIso.toFloat().coerceIn(from, to)
+                    val presets = getSupportedIsoPresets()
+                    from = 0f
+                    to = (presets.size - 1).toFloat()
+                    step = 1f
+                    val closestIdx = presets.mapIndexed { idx, v -> Pair(idx, Math.abs(v - currentIso)) }
+                        .minByOrNull { it.second }?.first ?: 0
+                    value = closestIdx.toFloat()
                 }
                 ManualParameter.SHUTTER -> {
-                    from = 0f; to = 100f
-                    val minNs = exposureRange?.lower ?: 1000000L
-                    val maxNs = exposureRange?.upper ?: 1000000000L
-                    val ratio = (Math.log(currentExposureNs.toDouble()) - Math.log(minNs.toDouble())) /
-                                (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))
-                    value = (ratio * 100f).toFloat().coerceIn(0f, 100f)
+                    val presets = getSupportedShutterPresets()
+                    from = 0f
+                    to = (presets.size - 1).toFloat()
+                    step = 1f
+                    val currentSec = currentExposureNs / 1_000_000_000.0
+                    val closestIdx = presets.mapIndexed { idx, v -> Pair(idx, Math.abs(v - currentSec)) }
+                        .minByOrNull { it.second }?.first ?: 0
+                    value = closestIdx.toFloat()
                 }
                 ManualParameter.APERTURE -> {
                     if (apertureList != null && apertureList!!.size > 1) {
@@ -2144,13 +2240,16 @@ class MainActivity : AppCompatActivity() {
     /** 參數值變更的統一入口（H slider 和 V slider 都呼叫此函式） */
     private fun onParamChanged(param: ManualParameter, value: Float) {
         when (param) {
-            ManualParameter.ISO -> currentIso = value.toInt()
+            ManualParameter.ISO -> {
+                val presets = getSupportedIsoPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                currentIso = presets[idx]
+            }
             ManualParameter.SHUTTER -> {
-                val minNs = exposureRange?.lower ?: 1000000L
-                val maxNs = exposureRange?.upper ?: 1000000000L
-                val ratio = value / 100.0
-                currentExposureNs = Math.exp(Math.log(minNs.toDouble()) + ratio *
-                    (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))).toLong()
+                val presets = getSupportedShutterPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                val sec = presets[idx]
+                currentExposureNs = (sec * 1_000_000_000).toLong()
             }
             ManualParameter.APERTURE -> apertureList?.let {
                 currentAperture = it[value.toInt().coerceIn(0, it.size - 1)]
@@ -2345,13 +2444,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun onParameterSliderChanged(value: Float) {
         when (currentManualParam) {
-            ManualParameter.ISO -> currentIso = value.toInt()
+            ManualParameter.ISO -> {
+                val presets = getSupportedIsoPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                currentIso = presets[idx]
+            }
             ManualParameter.SHUTTER -> {
-                val minNs = exposureRange?.lower ?: 1000000L
-                val maxNs = exposureRange?.upper ?: 1000000000L
-                val ratio = value / 100.0
-                val expNs = Math.exp(Math.log(minNs.toDouble()) + ratio * (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble())))
-                currentExposureNs = expNs.toLong()
+                val presets = getSupportedShutterPresets()
+                val idx = value.toInt().coerceIn(0, presets.size - 1)
+                val sec = presets[idx]
+                currentExposureNs = (sec * 1_000_000_000).toLong()
             }
             ManualParameter.APERTURE -> {
                 apertureList?.let {
@@ -2378,6 +2480,8 @@ class MainActivity : AppCompatActivity() {
             else -> {}
         }
         updateLutEffect()
+        updatePreview()
+        updateProStatusBar()
     }
 
     private fun startHistogramAnalysis() {
