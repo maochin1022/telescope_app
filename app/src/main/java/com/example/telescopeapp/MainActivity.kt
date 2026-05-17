@@ -64,7 +64,8 @@ class MainActivity : AppCompatActivity() {
     
     // Camera Control State
     private var currentCameraMode = CameraMode.AUTO
-    private var currentManualParam: ManualParameter? = null
+    private var currentManualParam: ManualParameter? = null  // H slider param
+    private var currentVParam: ManualParameter? = null       // V slider param
 
     // Parameter Ranges
     private var isoRange: android.util.Range<Int>? = null
@@ -91,6 +92,10 @@ class MainActivity : AppCompatActivity() {
     private var timerMode = 0 // 0, 3, 10
     private var isFlipEnabled = true
     private var isTopMenuExpanded = false
+    private var currentExpandedMenuId: Int = -1
+    private var isUpdatingSlider = false  // 防止水平/垂直滑桿雙向更新循環
+    private var hSliderCallback: ((Float) -> Unit)? = null  // 通用水平滑桿 callback
+    private var vSliderCallback: ((Float) -> Unit)? = null  // 通用垂直滑桿 callback
     private var isVoiceControlEnabled = false
     private var isRawEnabled = false
     private var isSuperHdrEnabled = false
@@ -98,6 +103,11 @@ class MainActivity : AppCompatActivity() {
     private var isDisplayInfoEnabled = false
     private var superHdrMinIso = 50
     private var superHdrMaxIso = 800
+    // EV 補償
+    private var isEvEnabled = false
+    private var currentEvOffset = 0f  // -3.0 ~ +3.0
+    private val EV_SAFE_SHUTTER_NS = 33_333_333L  // 1/30s
+    private val EV_MAX_SHUTTER_NS  = 125_000L      // 1/8000s
     private var currentStyleIndex = 0 // Style LUT
     private val styleNames = arrayOf("None", "Vivid", "Film", "B&W", "Cool")
     private var isProGradingEnabled = false
@@ -178,31 +188,31 @@ class MainActivity : AppCompatActivity() {
             viewBinding.btnExpandMenu.animate().rotation(if (isTopMenuExpanded) 180f else 0f).setDuration(300).start()
         }
 
-        // --- Top Menu Listeners (Unified Framework) ---
+        // --- Top Menu Listeners ---
+        // 純開關型：直接 toggle，不展開次選單
         viewBinding.btnToggleGrid.setOnClickListener {
-            showMenuSelectionDialog("輔助線", arrayOf("關閉", "顯示")) { which ->
-                isGridLinesEnabled = (which == 1)
-                viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
-                updateTopMenuUI()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isGridLinesEnabled = !isGridLinesEnabled
+            viewBinding.gridLinesLayout.visibility = if (isGridLinesEnabled) android.view.View.VISIBLE else android.view.View.GONE
+            updateTopMenuUI()
         }
 
         viewBinding.btnToggleHistogram.setOnClickListener {
-            showMenuSelectionDialog("直方圖", arrayOf("關閉", "顯示")) { which ->
-                isHistogramEnabled = (which == 1)
-                if (isHistogramEnabled) {
-                    viewBinding.histogramView.visibility = android.view.View.VISIBLE
-                    startHistogramAnalysis()
-                } else {
-                    viewBinding.histogramView.visibility = android.view.View.GONE
-                    stopHistogramAnalysis()
-                }
-                updateTopMenuUI()
+            resetInactivityTimer(); closeSubmenu()
+            isHistogramEnabled = !isHistogramEnabled
+            if (isHistogramEnabled) {
+                viewBinding.histogramView.visibility = android.view.View.VISIBLE
+                startHistogramAnalysis()
+            } else {
+                viewBinding.histogramView.visibility = android.view.View.GONE
+                stopHistogramAnalysis()
             }
+            updateTopMenuUI()
         }
 
+        // 模式切換：有意義的兩選 → 次選單
         viewBinding.btnToggleHdr.setOnClickListener {
-            showMenuSelectionDialog("相機模式", arrayOf("標準 (AUTO)", "高動態 (HDR)")) { which ->
+            showInlineSubmenu(R.id.btn_toggle_hdr, arrayOf("標準 (AUTO)", "高動態 (HDR)")) { which ->
                 currentCameraMode = if (which == 1) CameraMode.HDR else CameraMode.AUTO
                 updateModeUI()
                 updateTopMenuUI()
@@ -210,49 +220,41 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 倒數：3 選 → 次選單
         viewBinding.btnToggleTimer.setOnClickListener {
-            showMenuSelectionDialog("倒數計時", arrayOf("關閉", "3秒", "10秒")) { which ->
-                timerMode = when(which) {
-                    1 -> 3
-                    2 -> 10
-                    else -> 0
-                }
+            showInlineSubmenu(R.id.btn_toggle_timer, arrayOf("關閉", "3秒", "10秒")) { which ->
+                timerMode = when(which) { 1 -> 3; 2 -> 10; else -> 0 }
                 updateTopMenuUI()
             }
         }
 
         viewBinding.btnToggleFlip.setOnClickListener {
-            showMenuSelectionDialog("畫面翻轉 (180°)", arrayOf("正常", "翻轉")) { which ->
-                isFlipEnabled = (which == 1)
-                configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
-                updateTopMenuUI()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isFlipEnabled = !isFlipEnabled
+            configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
+            updateTopMenuUI()
         }
 
         viewBinding.btnToggleVoice.setOnClickListener {
-            showMenuSelectionDialog("聲控拍照", arrayOf("關閉", "開啟")) { which ->
-                isVoiceControlEnabled = (which == 1)
-                if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
-                updateTopMenuUI()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isVoiceControlEnabled = !isVoiceControlEnabled
+            if (isVoiceControlEnabled) startVoiceListening() else stopVoiceListening()
+            updateTopMenuUI()
         }
 
         viewBinding.btnToggleRaw.setOnClickListener {
-            showMenuSelectionDialog("RAW 儲存", arrayOf("關閉 (JPG Only)", "開啟 (RAW+JPG)")) { which ->
-                isRawEnabled = (which == 1)
-                updateTopMenuUI()
-                createCameraPreviewSession()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isRawEnabled = !isRawEnabled
+            updateTopMenuUI()
+            createCameraPreviewSession()
         }
 
+        // Super HDR：3 選（含設定）→ 次選單
         viewBinding.btnToggleSuperHdr.setOnClickListener {
-            showMenuSelectionDialog("Super HDR", arrayOf("關閉", "開啟", "設定範圍...")) { which ->
+            showInlineSubmenu(R.id.btn_toggle_super_hdr, arrayOf("關閉", "開啟", "設定範圍...")) { which ->
                 when (which) {
                     0 -> isSuperHdrEnabled = false
-                    1 -> {
-                        isSuperHdrEnabled = true
-                        Toast.makeText(this, "Super HDR Enabled", Toast.LENGTH_SHORT).show()
-                    }
+                    1 -> { isSuperHdrEnabled = true; Toast.makeText(this, "Super HDR Enabled", Toast.LENGTH_SHORT).show() }
                     2 -> showSuperHdrSettingsDialog()
                 }
                 updateTopMenuUI()
@@ -260,62 +262,57 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewBinding.btnToggleInfo.setOnClickListener {
-            showMenuSelectionDialog("資訊顯示", arrayOf("關閉", "開啟")) { which ->
+            showInlineSubmenu(R.id.btn_toggle_info, arrayOf("關閉", "開啟")) { which ->
                 isDisplayInfoEnabled = (which == 1)
-                viewBinding.infoOverlay.visibility = if (isDisplayInfoEnabled) android.view.View.VISIBLE else android.view.View.GONE
+                updateModeUI()
                 updateTopMenuUI()
                 updateInfoOverlay()
             }
         }
 
         viewBinding.btnToggleStyle.setOnClickListener {
-            showLutManagerDialog() // 已經是獨立的清單框架
+            closeSubmenu()
+            showLutManagerDialog()
         }
 
         viewBinding.btnToggleGrading.setOnClickListener {
-            showMenuSelectionDialog("專業調色", arrayOf("關閉", "開啟")) { which ->
-                isProGradingEnabled = (which == 1)
-                updateLutEffect()
-                updateTopMenuUI()
-                setupManualParameters()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isProGradingEnabled = !isProGradingEnabled
+            updateLutEffect()
+            updateTopMenuUI()
+            setupManualParameters()
         }
 
         viewBinding.btnTogglePeaking.setOnClickListener {
-            showMenuSelectionDialog("峰值對焦", arrayOf("關閉", "開啟")) { which ->
-                isPeakingEnabled = (which == 1)
-                updateLutEffect()
-                updateTopMenuUI()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isPeakingEnabled = !isPeakingEnabled
+            updateLutEffect()
+            updateTopMenuUI()
         }
 
         viewBinding.btnToggleLevel.setOnClickListener {
-            showMenuSelectionDialog("水平儀", arrayOf("關閉", "開啟")) { which ->
-                isLevelEnabled = (which == 1)
-                viewBinding.levelContainer.visibility = if (isLevelEnabled) android.view.View.VISIBLE else android.view.View.GONE
-                updateTopMenuUI()
-            }
+            resetInactivityTimer(); closeSubmenu()
+            isLevelEnabled = !isLevelEnabled
+            viewBinding.levelContainer.visibility = if (isLevelEnabled) android.view.View.VISIBLE else android.view.View.GONE
+            updateTopMenuUI()
         }
 
+        // 穩定：4 選 → 次選單
         viewBinding.btnToggleStab.setOnClickListener {
-            val modes = arrayOf("關閉", "僅硬體 (OIS)", "標準 (OIS+EIS)", "專業穩定 (Pro)")
-            showMenuSelectionDialog("穩定器模式", modes) { which ->
+            showInlineSubmenu(R.id.btn_toggle_stab,
+                arrayOf("關閉", "僅硬體 (OIS)", "標準 (OIS+EIS)", "專業穩定 (Pro)")) { which ->
                 currentStabMode = which
                 updateTopMenuUI()
                 createCameraPreviewSession()
             }
         }
 
+        // 縮時：6 選 → 次選單
         viewBinding.btnToggleInterval.setOnClickListener {
-            val options = arrayOf("關閉", "5秒", "10秒", "30秒", "1分鐘", "5分鐘")
-            showMenuSelectionDialog("縮時攝影間隔", options) { which ->
+            showInlineSubmenu(R.id.btn_toggle_interval,
+                arrayOf("關閉", "5秒", "10秒", "30秒", "1分鐘", "5分鐘")) { which ->
                 timeLapseIntervalMs = when(which) {
-                    1 -> 5000L
-                    2 -> 10000L
-                    3 -> 30000L
-                    4 -> 60000L
-                    5 -> 300000L
-                    else -> 0L
+                    1 -> 5000L; 2 -> 10000L; 3 -> 30000L; 4 -> 60000L; 5 -> 300000L; else -> 0L
                 }
                 updateTimeLapseLogic()
                 updateTopMenuUI()
@@ -439,6 +436,59 @@ class MainActivity : AppCompatActivity() {
                 }
                 startActivity(intent)
             }
+        }
+
+        // EV 按鈕 toggle
+        viewBinding.btnEvToggle.setOnClickListener {
+            resetInactivityTimer()
+            isEvEnabled = !isEvEnabled
+            if (isEvEnabled) {
+                viewBinding.evPanel.visibility = android.view.View.VISIBLE
+                viewBinding.btnEvToggle.setBackgroundResource(R.drawable.bg_pill_button_active)
+                viewBinding.btnEvToggle.setTextColor(android.graphics.Color.BLACK)
+            } else {
+                viewBinding.evPanel.visibility = android.view.View.GONE
+                viewBinding.btnEvToggle.setBackgroundResource(R.drawable.bg_pill_button)
+                viewBinding.btnEvToggle.setTextColor(android.graphics.Color.WHITE)
+                currentEvOffset = 0f
+                currentEv = 0
+                viewBinding.evSlider.value = 0f
+                viewBinding.evValueText.text = "0 EV"
+                updatePreview()
+            }
+        }
+
+        viewBinding.btnSwapSliders.setOnClickListener {
+            resetInactivityTimer()
+            swapSliders()
+        }
+
+        // EV 滑桂
+        viewBinding.evSlider.addOnChangeListener { _, value, _ ->
+            currentEvOffset = value
+            val label = if (value >= 0f) "+%.1f EV".format(value) else "%.1f EV".format(value)
+            viewBinding.evValueText.text = label
+            if (isEvEnabled) updatePreview()
+        }
+
+        // EV 滑桂 +/- 按鈕
+        viewBinding.btnEvMinus.setOnClickListener {
+            viewBinding.evSlider.value = (viewBinding.evSlider.value - 0.3f).coerceAtLeast(-3f)
+        }
+        viewBinding.btnEvPlus.setOnClickListener {
+            viewBinding.evSlider.value = (viewBinding.evSlider.value + 0.3f).coerceAtMost(3f)
+        }
+
+        // 垂直滑桿 +/- 按鈕（向上 = + 即更大的值）
+        viewBinding.btnVParamPlus.setOnClickListener {
+            val v = viewBinding.verticalParamSlider
+            val step = if (v.stepSize > 0f) v.stepSize else (v.valueTo - v.valueFrom) * 0.01f
+            v.value = (v.value + step).coerceAtMost(v.valueTo)
+        }
+        viewBinding.btnVParamMinus.setOnClickListener {
+            val v = viewBinding.verticalParamSlider
+            val step = if (v.stepSize > 0f) v.stepSize else (v.valueTo - v.valueFrom) * 0.01f
+            v.value = (v.value - step).coerceAtLeast(v.valueFrom)
         }
     }
 
@@ -724,6 +774,7 @@ class MainActivity : AppCompatActivity() {
             videoUri?.let {
                 lastMediaUri = it
                 try {
+                    viewBinding.thumbnailView.setPadding(0, 0, 0, 0)
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         val thumbnail = contentResolver.loadThumbnail(it, android.util.Size(128, 128), null)
                         viewBinding.thumbnailView.setImageBitmap(thumbnail)
@@ -835,9 +886,20 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             
-            // 曝光補償 (僅在 AE 開啟時有效，即 AUTO/HDR 模式)
+            // EV 補償：統一使用系統 AE 補償
             if (currentCameraMode != CameraMode.PRO) {
-                set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, currentEv)
+                val step = evStep ?: android.util.Rational(1, 3)
+                val compensationIndex = if (isEvEnabled) {
+                    // 將 Float (-3.0 ~ 3.0) 轉為系統 Index
+                    Math.round(currentEvOffset * step.denominator.toFloat() / step.numerator.toFloat())
+                } else {
+                    currentEv
+                }
+                val clampedIndex = compensationIndex.coerceIn(evRange?.lower ?: -12, evRange?.upper ?: 12)
+                set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, clampedIndex)
+                
+                // 同步更新 currentEv 以供 HUD 顯示
+                currentEv = clampedIndex
             }
             
             // 防手震設定 (OIS + EIS)
@@ -884,11 +946,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
     private fun updatePreview() {
         if (cameraDevice == null || previewRequestBuilder == null) return
         try {
             applyCameraSettings(previewRequestBuilder!!)
             captureSession?.setRepeatingRequest(previewRequestBuilder!!.build(), captureCallback, backgroundHandler)
+            runOnUiThread { updateProStatusBar() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to update preview", e)
         }
@@ -926,8 +990,22 @@ class MainActivity : AppCompatActivity() {
             }
         } else "AUTO"
 
-        val apertureStr = currentAperture?.let { String.format(Locale.US, "F%.2f", it) } ?: ""
-        viewBinding.infoOverlay.text = String.format(Locale.US, "ISO %d | S %s | %s %s", iso, shutterStr, apertureStr, wbStr)
+        val evStr = if (currentCameraMode == CameraMode.PRO) {
+            if (currentEv >= 0) "+$currentEv" else "$currentEv"
+        } else {
+            if (isEvEnabled) {
+                val step = evStep ?: android.util.Rational(1, 3)
+                val compensationIndex = Math.round(currentEvOffset * step.denominator.toFloat() / step.numerator.toFloat())
+                if (compensationIndex >= 0) "+$compensationIndex" else "$compensationIndex"
+            } else {
+                if (currentEv >= 0) "+$currentEv" else "$currentEv"
+            }
+        }
+
+        viewBinding.hudShutter.text = shutterStr
+        viewBinding.hudIso.text = iso.toString()
+        viewBinding.hudWb.text = wbStr
+        viewBinding.hudEv.text = evStr
     }
 
     private fun updateLutEffect() {
@@ -1271,6 +1349,7 @@ class MainActivity : AppCompatActivity() {
                     lastMediaUri = it
                     runOnUiThread {
                         try {
+                            viewBinding.thumbnailView.setPadding(0, 0, 0, 0)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 val thumbnail = contentResolver.loadThumbnail(it, android.util.Size(128, 128), null)
                                 viewBinding.thumbnailView.setImageBitmap(thumbnail)
@@ -1386,17 +1465,101 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupModeSelectors() {
-        viewBinding.modeAuto.setOnClickListener { currentCameraMode = CameraMode.AUTO; updateModeUI() }
-        viewBinding.modeManual.setOnClickListener { 
-            // 進入 PRO 模式時，先帶入最後一次 AUTO 模式的參數
+        viewBinding.modeAuto.setOnClickListener {
+            currentCameraMode = CameraMode.AUTO
+            // 離開 PRO 模式時清除參數選擇
+            currentManualParam = null
+            currentVParam = null
+            updateModeUI()
+        }
+        viewBinding.modeManual.setOnClickListener {
+            // 進入 PRO 模式時，帶入最後一次 AUTO 的參數
             if (currentCameraMode != CameraMode.PRO) {
                 currentIso = lastAutoIso
                 currentExposureNs = lastAutoExposureNs
+                // 預設：S 在水平滑桿，ISO 在垂直滑桿
+                currentManualParam = ManualParameter.SHUTTER
+                currentVParam = ManualParameter.ISO
             }
             currentCameraMode = CameraMode.PRO
-            updateModeUI() 
+            updateModeUI()
         }
         updateModeUI()
+        setupStatusBlockListeners()
+    }
+
+    private fun setupStatusBlockListeners() {
+        // 為專業狀態列的參數區塊添加點擊切換功能
+        viewBinding.statusEvBlock.setOnClickListener {
+            resetInactivityTimer()
+            currentManualParam = ManualParameter.EV
+            updateModeUI()
+        }
+        viewBinding.statusABlock.setOnClickListener {
+            resetInactivityTimer()
+            currentManualParam = ManualParameter.APERTURE
+            updateModeUI()
+        }
+        viewBinding.statusSBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentManualParam == ManualParameter.SHUTTER) swapSliders()
+            else { currentManualParam = ManualParameter.SHUTTER; updateModeUI() }
+        }
+        viewBinding.statusIsoBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentManualParam == ManualParameter.ISO) swapSliders()
+            else { currentManualParam = ManualParameter.ISO; updateModeUI() }
+        }
+        viewBinding.statusWbBlock.setOnClickListener {
+            resetInactivityTimer()
+            currentManualParam = ManualParameter.WB
+            updateModeUI()
+        }
+        viewBinding.statusFBlock.setOnClickListener {
+            resetInactivityTimer()
+            currentManualParam = ManualParameter.FOCUS
+            updateModeUI()
+        }
+
+        // --- AUTO HUD 快速接管 ---
+        viewBinding.hudSBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentCameraMode != CameraMode.PRO) {
+                currentIso = lastAutoIso; currentExposureNs = lastAutoExposureNs
+                currentCameraMode = CameraMode.PRO
+            }
+            currentManualParam = ManualParameter.SHUTTER
+            updateModeUI()
+        }
+        viewBinding.hudIsoBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentCameraMode != CameraMode.PRO) {
+                currentIso = lastAutoIso; currentExposureNs = lastAutoExposureNs
+                currentCameraMode = CameraMode.PRO
+            }
+            currentManualParam = ManualParameter.ISO
+            updateModeUI()
+        }
+        viewBinding.hudWbBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentCameraMode != CameraMode.PRO) {
+                currentIso = lastAutoIso; currentExposureNs = lastAutoExposureNs
+                currentCameraMode = CameraMode.PRO
+            }
+            currentManualParam = ManualParameter.WB
+            updateModeUI()
+        }
+        viewBinding.hudEvBlock.setOnClickListener {
+            resetInactivityTimer()
+            if (currentCameraMode != CameraMode.PRO) {
+                // AUTO 下點擊 EV 優先使用專屬面板，除非切換模式
+                isEvEnabled = true
+                updateModeUI()
+            } else {
+                currentManualParam = ManualParameter.EV
+                updateModeUI()
+            }
+        }
     }
 
     private fun updateModeUI() {
@@ -1412,14 +1575,33 @@ class MainActivity : AppCompatActivity() {
         // Update Top Menu HDR status dot
         viewBinding.dotHdr.setBackgroundColor(if (currentCameraMode == CameraMode.HDR) android.graphics.Color.parseColor("#FFD700") else android.graphics.Color.WHITE)
 
-        // AUTO/HDR 模式也允許調整 EV
-        viewBinding.parameterScrollView.visibility = android.view.View.VISIBLE
+        viewBinding.parameterScrollView.visibility = if (currentCameraMode == CameraMode.PRO) android.view.View.VISIBLE else android.view.View.GONE
+        
+        // 同步 EV 面板狀態
+        if (currentCameraMode != CameraMode.PRO && isEvEnabled) {
+            viewBinding.evPanel.visibility = android.view.View.VISIBLE
+        } else {
+            viewBinding.evPanel.visibility = android.view.View.GONE
+        }
         setupManualParameters()
 
-        if (currentManualParam != null) {
-            viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+        if (currentCameraMode == CameraMode.PRO) {
+            // PRO 模式：主動建立 H/V 滑桿（預設已在 setupModeSelectors 設好）
+            if (currentManualParam != null) {
+                updateSliderForParameter()
+                viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+            } else {
+                viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            }
+            currentVParam?.let { setupVSliderForParam(it) }
+                ?: run { viewBinding.verticalSliderContainer.visibility = android.view.View.GONE }
         } else {
-            viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            if (currentManualParam != null) {
+                viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+            } else {
+                viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+                viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
+            }
         }
         
         // 直方圖狀態由其獨立開關控制，不受模式影響
@@ -1431,7 +1613,41 @@ class MainActivity : AppCompatActivity() {
             stopHistogramAnalysis()
         }
         updateTopMenuUI()
+        // PRO mode status bar
+        viewBinding.proStatusBar.visibility =
+            if (currentCameraMode == CameraMode.PRO) android.view.View.VISIBLE
+            else android.view.View.GONE
+        updateProStatusBar()
+        // AUTO 模式下的 HUD 顯示邏輯
+        viewBinding.autoStatusHud.visibility = 
+            if (currentCameraMode != CameraMode.PRO && isDisplayInfoEnabled) android.view.View.VISIBLE 
+            else android.view.View.GONE
+        
         updatePreview()
+    }
+
+    private fun swapSliders() {
+        if (currentCameraMode != CameraMode.PRO) return
+        val temp = currentManualParam
+        currentManualParam = currentVParam
+        currentVParam = temp
+        
+        // 更新 UI
+        if (currentManualParam != null) {
+            updateSliderForParameter()
+            viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+        } else {
+            viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+        }
+        
+        if (currentVParam != null) {
+            setupVSliderForParam(currentVParam!!)
+            viewBinding.verticalSliderContainer.visibility = android.view.View.VISIBLE
+        } else {
+            viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
+        }
+        
+        setupManualParameters() // 重新刷新顏色
     }
 
     private fun updateTopMenuUI() {
@@ -1488,7 +1704,7 @@ class MainActivity : AppCompatActivity() {
 
         setTileStyle(viewBinding.btnToggleStab, currentStabMode > 0, viewBinding.dotStab)
         setTileStyle(viewBinding.btnToggleInterval, timeLapseIntervalMs > 0, viewBinding.dotInterval)
-        
+
         // Update Stab Text based on mode
         viewBinding.textStab.text = when(currentStabMode) {
             0 -> "Stab Off"
@@ -1503,45 +1719,42 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupManualParameters() {
-        val colorActive = android.graphics.Color.parseColor("#FFD700") // Gold for active param
+        val colorH       = android.graphics.Color.parseColor("#FFD700") // 金色 = H slider
+        val colorV       = android.graphics.Color.parseColor("#00CFFF") // 青色 = V slider
         val colorInactive = android.graphics.Color.parseColor("#FFFFFF")
-        
+
         val params = if (currentCameraMode == CameraMode.PRO) {
             mutableListOf(
-                Pair(ManualParameter.ISO, "ISO"),
+                Pair(ManualParameter.ISO,     "ISO"),
                 Pair(ManualParameter.SHUTTER, "S"),
-                Pair(ManualParameter.APERTURE, "F"),
-                Pair(ManualParameter.WB, "WB"),
-                Pair(ManualParameter.EV, "EV"),
-                Pair(ManualParameter.FOCUS, "AF/MF")
+                Pair(ManualParameter.APERTURE,"F"),
+                Pair(ManualParameter.WB,      "WB"),
+                Pair(ManualParameter.EV,      "EV"),
+                Pair(ManualParameter.FOCUS,   "AF/MF")
             ).apply {
-                // 如果該鏡頭不支援可變光圈，則隱藏 F 選項
                 if (apertureList == null || apertureList!!.size <= 1) {
                     removeIf { it.first == ManualParameter.APERTURE }
                 }
-                // 如果開啟了專業調色，顯示一級校正參數
                 if (isProGradingEnabled) {
-                    add(Pair(ManualParameter.CONTRAST, "CON"))
+                    add(Pair(ManualParameter.CONTRAST,   "CON"))
                     add(Pair(ManualParameter.SATURATION, "SAT"))
                 }
             }
         } else {
-            // 非 PRO 模式下僅保留 EV 調整
             listOf(Pair(ManualParameter.EV, "EV"))
         }
 
-        // 若切換模式後當前參數不適用，則切換至預設參數
         if (currentCameraMode != CameraMode.PRO) {
             if (currentManualParam != ManualParameter.EV) {
                 currentManualParam = ManualParameter.EV
-                // 更新滑桿範圍與初始值
+                currentVParam = null
                 updateSliderForParameter()
             }
         }
-        
+
         viewBinding.parameterLayout.removeAllViews()
         paramTextViews.clear()
-        
+
         for (p in params) {
             val tv = TextView(this).apply {
                 text = p.second
@@ -1550,17 +1763,40 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(colorInactive)
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(120, 90).apply { setMargins(8, 0, 8, 0) }
-                
+
+                // 單擊：toggle H slider（金色）
                 setOnClickListener {
-                    currentManualParam = p.first
-                    paramTextViews.forEach { it.setTextColor(colorInactive) }
-                    setTextColor(colorActive)
-                    updateSliderForParameter()
+                    val param = p.first
+                    if (currentManualParam == param) {
+                        currentManualParam = null
+                        hideHorizontalSlider()
+                    } else {
+                        currentManualParam = param
+                        updateSliderForParameter()
+                    }
+                    refreshParamPillColors(params)
                 }
             }
             viewBinding.parameterLayout.addView(tv)
             paramTextViews.add(tv)
         }
+    }
+
+    /** 根據目前 H/V 選中狀態刷新 pill 顏色：金=H，青=V，白=未選 */
+    private fun refreshParamPillColors(params: List<Pair<ManualParameter, String>>) {
+        val colorH       = android.graphics.Color.parseColor("#FFD700")
+        val colorV       = android.graphics.Color.parseColor("#00CFFF")
+        val colorInactive = android.graphics.Color.WHITE
+        paramTextViews.forEachIndexed { i, view ->
+            if (i < params.size) {
+                view.setTextColor(when (params[i].first) {
+                    currentManualParam -> colorH
+                    currentVParam      -> colorV
+                    else               -> colorInactive
+                })
+            }
+        }
+        updateProStatusBar()
     }
 
     private fun formatParameterValue(param: ManualParameter, value: Float): String {
@@ -1681,6 +1917,7 @@ class MainActivity : AppCompatActivity() {
         val isGradingParam = currentManualParam == ManualParameter.CONTRAST || currentManualParam == ManualParameter.SATURATION
         if ((currentCameraMode != CameraMode.PRO && !isGradingParam && currentManualParam != ManualParameter.EV) || currentManualParam == null) {
             viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+            viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
             return
         }
         viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
@@ -1759,14 +1996,352 @@ class MainActivity : AppCompatActivity() {
         }
         
         populatePresets(currentManualParam!!)
-        viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, viewBinding.parameterSlider.value)
-        
-        viewBinding.parameterSlider.addOnChangeListener { _, value, _ ->
-            viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, value)
-            onParameterSliderChanged(value)
-            updateInfoOverlay()
+        val displayText = formatParameterValue(currentManualParam!!, viewBinding.parameterSlider.value)
+        viewBinding.parameterValueText.text = displayText
+
+        // 同步設定垂直滑桿（與水平同範圍）
+        syncVerticalSliderSetup()
+
+        viewBinding.parameterSlider.addOnChangeListener { _, value, fromUser ->
+            if (fromUser && !isUpdatingSlider) {
+                isUpdatingSlider = true
+                viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, value)
+                syncVerticalSliderValue(value)
+                onParameterSliderChanged(value)
+                updateInfoOverlay()
+                isUpdatingSlider = false
+            }
         }
     }
+
+    /** 垂直滑桿設定：複製水平滑桿的 from/to/step/value */
+    private fun syncVerticalSliderSetup() {
+        val h = viewBinding.parameterSlider
+        val v = viewBinding.verticalParamSlider
+        val paramName = when (currentManualParam) {
+            ManualParameter.ISO -> "ISO"
+            ManualParameter.SHUTTER -> "S"
+            ManualParameter.APERTURE -> "A"
+            ManualParameter.WB -> "WB"
+            ManualParameter.EV -> "EV"
+            ManualParameter.FOCUS -> "MF"
+            ManualParameter.CONTRAST -> "CON"
+            ManualParameter.SATURATION -> "SAT"
+            else -> ""
+        }
+        viewBinding.vParamLabel.text = paramName
+        try {
+            v.clearOnChangeListeners()
+            v.valueFrom = h.valueFrom
+            v.valueTo = h.valueTo
+            v.stepSize = h.stepSize
+            v.value = h.value.coerceIn(h.valueFrom, h.valueTo)
+        } catch (e: Exception) { Log.e(TAG, "verticalSlider setup", e) }
+
+        // 顯示垂直滑桿
+        viewBinding.verticalSliderContainer.visibility = android.view.View.VISIBLE
+
+        // 動態調整 Slider 寬度 = container 高度（旋轉後變視覺高度）
+        viewBinding.vSliderFrame.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                viewBinding.vSliderFrame.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                val frameH = viewBinding.vSliderFrame.height
+                if (frameH > 0) {
+                    val lp = viewBinding.verticalParamSlider.layoutParams
+                    lp.width = frameH
+                    viewBinding.verticalParamSlider.layoutParams = lp
+                }
+            }
+        })
+
+        // 垂直滑桿改變 → 同步水平
+        v.addOnChangeListener { _, value, fromUser ->
+            if (fromUser && !isUpdatingSlider) {
+                isUpdatingSlider = true
+                try { viewBinding.parameterSlider.value = value.coerceIn(h.valueFrom, h.valueTo) } catch (e: Exception) {}
+                viewBinding.parameterValueText.text = formatParameterValue(currentManualParam!!, value)
+                onParameterSliderChanged(value)
+                updateInfoOverlay()
+                isUpdatingSlider = false
+            }
+        }
+    }
+
+    private fun syncVerticalSliderValue(value: Float) {
+        try {
+            val v = viewBinding.verticalParamSlider
+            viewBinding.verticalParamSlider.value = value.coerceIn(v.valueFrom, v.valueTo)
+        } catch (e: Exception) {}
+    }
+
+    /**
+     * 為指定參數設定垂直滑桿（独立於 H slider）
+     * 呼叫 showVerticalSlider() 通用 API，不和 H slider 雙向同步。
+     */
+    private fun setupVSliderForParam(param: ManualParameter) {
+        val label = when(param) {
+            ManualParameter.ISO -> "ISO"
+            ManualParameter.SHUTTER -> "S"
+            ManualParameter.APERTURE -> "A"
+            ManualParameter.WB -> "WB"
+            ManualParameter.EV -> "EV"
+            ManualParameter.FOCUS -> "MF"
+            ManualParameter.CONTRAST -> "CON"
+            ManualParameter.SATURATION -> "SAT"
+            else -> param.name
+        }
+        var from = 0f; var to = 100f; var step = 0f; var value = 0f
+        try {
+            when(param) {
+                ManualParameter.ISO -> {
+                    from = isoRange?.lower?.toFloat() ?: 100f
+                    to   = isoRange?.upper?.toFloat() ?: 3200f
+                    value = currentIso.toFloat().coerceIn(from, to)
+                }
+                ManualParameter.SHUTTER -> {
+                    from = 0f; to = 100f
+                    val minNs = exposureRange?.lower ?: 1000000L
+                    val maxNs = exposureRange?.upper ?: 1000000000L
+                    val ratio = (Math.log(currentExposureNs.toDouble()) - Math.log(minNs.toDouble())) /
+                                (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))
+                    value = (ratio * 100f).toFloat().coerceIn(0f, 100f)
+                }
+                ManualParameter.APERTURE -> {
+                    if (apertureList != null && apertureList!!.size > 1) {
+                        from = 0f; to = (apertureList!!.size - 1).toFloat(); step = 1f
+                        val idx = apertureList!!.indexOfFirst { it == currentAperture }
+                        value = Math.max(0, idx).toFloat()
+                    } else return
+                }
+                ManualParameter.WB -> {
+                    from = 0f; to = 4f; step = 1f
+                    value = when(currentWbMode) {
+                        CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT -> 1f
+                        CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> 2f
+                        CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT -> 3f
+                        CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT -> 4f
+                        else -> 0f
+                    }
+                }
+                ManualParameter.EV -> {
+                    from = evRange?.lower?.toFloat() ?: -4f
+                    to   = evRange?.upper?.toFloat() ?: 4f; step = 1f
+                    value = currentEv.toFloat().coerceIn(from, to)
+                }
+                ManualParameter.FOCUS -> {
+                    from = 0f; to = if (minFocusDistance > 0) minFocusDistance else 10f
+                    value = manualFocusDistance.coerceIn(from, to)
+                }
+                ManualParameter.CONTRAST -> { from = 0.5f; to = 2.0f; value = gradingContrast }
+                ManualParameter.SATURATION -> { from = 0.0f; to = 2.0f; value = gradingSaturation }
+                else -> {}
+            }
+        } catch (e: Exception) { Log.e(TAG, "setupVSliderForParam", e); return }
+
+        showVerticalSlider(label, from, to, step, value) { v -> onParamChanged(param, v) }
+    }
+
+    /** 參數值變更的統一入口（H slider 和 V slider 都呼叫此函式） */
+    private fun onParamChanged(param: ManualParameter, value: Float) {
+        when (param) {
+            ManualParameter.ISO -> currentIso = value.toInt()
+            ManualParameter.SHUTTER -> {
+                val minNs = exposureRange?.lower ?: 1000000L
+                val maxNs = exposureRange?.upper ?: 1000000000L
+                val ratio = value / 100.0
+                currentExposureNs = Math.exp(Math.log(minNs.toDouble()) + ratio *
+                    (Math.log(maxNs.toDouble()) - Math.log(minNs.toDouble()))).toLong()
+            }
+            ManualParameter.APERTURE -> apertureList?.let {
+                currentAperture = it[value.toInt().coerceIn(0, it.size - 1)]
+            }
+            ManualParameter.WB -> currentWbMode = when(value.toInt()) {
+                1 -> CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT
+                2 -> CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+                3 -> CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT
+                4 -> CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT
+                else -> CaptureRequest.CONTROL_AWB_MODE_AUTO
+            }
+            ManualParameter.EV -> currentEv = value.toInt()
+            ManualParameter.CONTRAST -> gradingContrast = value
+            ManualParameter.SATURATION -> gradingSaturation = value
+            ManualParameter.FOCUS -> manualFocusDistance = value
+            else -> {}
+        }
+        updateLutEffect()
+        updatePreview()
+        updateProStatusBar()
+    }
+
+    /**
+     * 更新 PRO 模式數值列：將所有參數的當前傀寫入對應 TextView。
+     * 當前選中的 H/V 參數顯示金色，其餘為白色。
+     */
+    private fun updateProStatusBar() {
+        val colorH       = android.graphics.Color.parseColor("#FFD700")
+        val colorV       = android.graphics.Color.parseColor("#00CFFF")
+        val colorDefault = android.graphics.Color.WHITE
+
+        fun colorFor(param: ManualParameter) = when (param) {
+            currentManualParam -> colorH
+            currentVParam      -> colorV
+            else               -> colorDefault
+        }
+
+        // --- 共用數值格式化 ---
+        val shutterStr = run {
+            val sec = currentExposureNs / 1_000_000_000.0
+            if (sec >= 1.0) String.format(java.util.Locale.US, "%.1fs", sec)
+            else "1/${Math.round(1.0 / sec)}s"
+        }
+        val isoStr = currentIso.toString()
+        val evStr = run {
+            val step = evStep ?: android.util.Rational(1, 3)
+            val evValue = currentEv.toFloat() * step.numerator.toFloat() / step.denominator.toFloat()
+            if (evValue >= 0) String.format(java.util.Locale.US, "+%.1f", evValue)
+            else String.format(java.util.Locale.US, "%.1f", evValue)
+        }
+        val wbStr = when (currentWbMode) {
+            CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT         -> "5600K"
+            CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT  -> "6500K"
+            CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT      -> "4000K"
+            CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT     -> "3200K"
+            else                                             -> "AUTO"
+        }
+
+        // --- 更新 AUTO HUD ---
+        viewBinding.hudShutter.text = shutterStr
+        viewBinding.hudIso.text = isoStr
+        viewBinding.hudWb.text = wbStr
+        viewBinding.hudEv.text = evStr
+
+        // --- 更新 PRO Status Bar ---
+        if (currentCameraMode == CameraMode.PRO) {
+            viewBinding.statusEv.text = evStr
+            viewBinding.statusEv.setTextColor(colorFor(ManualParameter.EV))
+
+            if (apertureList != null && apertureList!!.size > 1) {
+                viewBinding.statusABlock.visibility = android.view.View.VISIBLE
+                val ap = currentAperture ?: apertureList!![0]
+                viewBinding.statusAperture.text = String.format(java.util.Locale.US, "F%.1f", ap)
+                viewBinding.statusAperture.setTextColor(colorFor(ManualParameter.APERTURE))
+            } else {
+                viewBinding.statusABlock.visibility = android.view.View.GONE
+            }
+
+            viewBinding.statusShutter.text = shutterStr
+            viewBinding.statusShutter.setTextColor(colorFor(ManualParameter.SHUTTER))
+
+            viewBinding.statusIso.text = isoStr
+            viewBinding.statusIso.setTextColor(colorFor(ManualParameter.ISO))
+
+            viewBinding.statusWb.text = wbStr
+            viewBinding.statusWb.setTextColor(colorFor(ManualParameter.WB))
+
+            viewBinding.statusFocus.text = if (manualFocusDistance == 0f) "AF" else
+                String.format(java.util.Locale.US, "%.2f", manualFocusDistance)
+            viewBinding.statusFocus.setTextColor(colorFor(ManualParameter.FOCUS))
+        }
+    }
+
+    // =========================================================
+    // 通用滑桿 API — 任何功能都可直接呼叫
+    // =========================================================
+
+    /**
+     * 顯示水平滑桿並接管 callback。
+     * 不影響 PRO mode 參數系統；若在 PRO mode 下呼叫並不想和參數 tab 衝突，
+     * 先呼叫 hideHorizontalSlider() 再呼叫此函式。
+     */
+    fun showHorizontalSlider(
+        label: String,
+        valueFrom: Float,
+        valueTo: Float,
+        stepSize: Float = 0f,
+        value: Float,
+        onChange: (Float) -> Unit
+    ) {
+        hSliderCallback = onChange
+        val slider = viewBinding.parameterSlider
+        try {
+            slider.clearOnChangeListeners()
+            slider.valueFrom = valueFrom
+            slider.valueTo = valueTo
+            slider.stepSize = stepSize
+            slider.value = value.coerceIn(valueFrom, valueTo)
+        } catch (e: Exception) { Log.e(TAG, "showHorizontalSlider", e) }
+        viewBinding.parameterValueText.text = label
+        slider.addOnChangeListener { _, v, fromUser ->
+            if (fromUser && !isUpdatingSlider) {
+                isUpdatingSlider = true
+                viewBinding.parameterValueText.text = label
+                hSliderCallback?.invoke(v)
+                isUpdatingSlider = false
+            }
+        }
+        viewBinding.parameterControlPanel.visibility = android.view.View.VISIBLE
+    }
+
+    /**
+     * 顯示垂直滑桿並接管 callback。
+     * 垂直滑桿旋轉 270°：上滑 = 從 valueFrom 到 valueTo（說明標譤會顯示 +/-）。
+     */
+    fun showVerticalSlider(
+        label: String,
+        valueFrom: Float,
+        valueTo: Float,
+        stepSize: Float = 0f,
+        value: Float,
+        onChange: (Float) -> Unit
+    ) {
+        vSliderCallback = onChange
+        viewBinding.vParamLabel.text = label
+        val v = viewBinding.verticalParamSlider
+        try {
+            v.clearOnChangeListeners()
+            v.valueFrom = valueFrom
+            v.valueTo = valueTo
+            v.stepSize = stepSize
+            v.value = value.coerceIn(valueFrom, valueTo)
+        } catch (e: Exception) { Log.e(TAG, "showVerticalSlider", e) }
+        v.addOnChangeListener { _, value, fromUser ->
+            if (fromUser && !isUpdatingSlider) {
+                isUpdatingSlider = true
+                vSliderCallback?.invoke(value)
+                isUpdatingSlider = false
+            }
+        }
+        viewBinding.verticalSliderContainer.visibility = android.view.View.VISIBLE
+        // 動態調整旋轉後的視覺高度
+        viewBinding.vSliderFrame.viewTreeObserver.addOnGlobalLayoutListener(
+            object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+                override fun onGlobalLayout() {
+                    viewBinding.vSliderFrame.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                    val h = viewBinding.vSliderFrame.height
+                    if (h > 0 && viewBinding.verticalParamSlider.layoutParams.width != h) {
+                        viewBinding.verticalParamSlider.layoutParams.width = h
+                        viewBinding.verticalParamSlider.requestLayout()
+                    }
+                }
+            }
+        )
+    }
+
+    /** 隐藏水平滑桿並釋放 callback */
+    fun hideHorizontalSlider() {
+        viewBinding.parameterControlPanel.visibility = android.view.View.GONE
+        viewBinding.parameterSlider.clearOnChangeListeners()
+        hSliderCallback = null
+    }
+
+    /** 隐藏垂直滑桿並釋放 callback */
+    fun hideVerticalSlider() {
+        viewBinding.verticalSliderContainer.visibility = android.view.View.GONE
+        viewBinding.verticalParamSlider.clearOnChangeListeners()
+        vSliderCallback = null
+    }
+
+    // =========================================================
 
     private fun onParameterSliderChanged(value: Float) {
         when (currentManualParam) {
@@ -1955,6 +2530,51 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             speechRecognizer?.stopListening()
         }
+    }
+
+    private fun closeSubmenu() {
+        if (currentExpandedMenuId != -1) {
+            viewBinding.subMenuScroll.visibility = android.view.View.GONE
+            viewBinding.subMenuLayout.removeAllViews()
+            currentExpandedMenuId = -1
+        }
+    }
+
+    private fun showInlineSubmenu(menuViewId: Int, options: Array<String>, onSelect: (Int) -> Unit) {
+        resetInactivityTimer()
+        // 同一個按鈕再次點擊 → 收合次選單
+        if (currentExpandedMenuId == menuViewId) {
+            viewBinding.subMenuScroll.visibility = android.view.View.GONE
+            viewBinding.subMenuLayout.removeAllViews()
+            currentExpandedMenuId = -1
+            return
+        }
+        currentExpandedMenuId = menuViewId
+        viewBinding.subMenuLayout.removeAllViews()
+
+        options.forEachIndexed { index, label ->
+            val btn = TextView(this).apply {
+                text = label
+                textSize = 13f
+                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                setTextColor(android.graphics.Color.WHITE)
+                setBackgroundResource(R.drawable.bg_pill_button)
+                gravity = android.view.Gravity.CENTER
+                setPadding(40, 0, 40, 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 76
+                ).apply { setMargins(10, 6, 10, 6) }
+                setOnClickListener {
+                    onSelect(index)
+                    // 選完後收合
+                    viewBinding.subMenuScroll.visibility = android.view.View.GONE
+                    viewBinding.subMenuLayout.removeAllViews()
+                    currentExpandedMenuId = -1
+                }
+            }
+            viewBinding.subMenuLayout.addView(btn)
+        }
+        viewBinding.subMenuScroll.visibility = android.view.View.VISIBLE
     }
 
     private fun showMenuSelectionDialog(title: String, options: Array<String>, onSelect: (Int) -> Unit) {

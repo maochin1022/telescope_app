@@ -8,6 +8,15 @@
     android:background="#000000"
     tools:context=".MainActivity">
 
+    <!-- Status bar spacer: 讓後面的 constraint chain 能算出正確位置 -->
+    <View
+        android:id="@+id/top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="32dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
     <TextureView
         android:id="@+id/viewFinder"
         android:layout_width="match_parent"
@@ -24,34 +33,6 @@
         android:background="#B3FFFFFF"
         android:visibility="gone"
         android:elevation="10dp" />
-
-    <!-- Histogram View -->
-    <com.example.telescopeapp.HistogramView
-        android:id="@+id/histogram_view"
-        android:layout_width="120dp"
-        android:layout_height="80dp"
-        android:layout_marginTop="32dp"
-        android:layout_marginStart="16dp"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <!-- Info Overlay -->
-    <TextView
-        android:id="@+id/info_overlay"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
-        android:layout_marginEnd="16dp"
-        android:padding="8dp"
-        android:background="#80000000"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        tools:text="ISO 100 | S 1/125s | F1.63 | WB AUTO" />
 
     <!-- Virtual Horizon Level -->
     <FrameLayout
@@ -367,6 +348,27 @@
         </LinearLayout>
     </HorizontalScrollView>
 
+    <!-- 次選單容器：menu tile 被點擊後展開選項 -->
+    <HorizontalScrollView
+        android:id="@+id/sub_menu_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#99000000"
+        android:scrollbars="none"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/top_menu_scroll"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:id="@+id/sub_menu_layout"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="10dp"
+            android:gravity="center_vertical" />
+    </HorizontalScrollView>
+
     <ImageView
         android:id="@+id/focus_ring"
         android:layout_width="80dp"
@@ -380,12 +382,11 @@
         android:id="@+id/btn_expand_menu"
         android:layout_width="48dp"
         android:layout_height="48dp"
-        android:layout_marginTop="32dp"
         android:scaleType="centerInside"
         android:src="@android:drawable/arrow_down_float"
         app:tint="#FFFFFF"
         android:background="?selectableItemBackgroundBorderless"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/sub_menu_scroll"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent" />
 
@@ -434,7 +435,82 @@
         </LinearLayout>
     </FrameLayout>
 
+    <!-- 垂直參數滑桿 (右側 overlay，旋轉 270° 讓上為 + 下為 -) -->
+    <LinearLayout
+        android:id="@+id/vertical_slider_container"
+        android:layout_width="52dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:background="#60000000"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:visibility="gone"
+        android:layout_marginTop="20dp"
+        android:layout_marginBottom="20dp"
+        app:layout_constraintTop_toBottomOf="@+id/btn_expand_menu"
+        app:layout_constraintBottom_toTopOf="@+id/parameter_control_panel"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/btn_v_param_plus"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:text="+"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:background="?selectableItemBackgroundBorderless" />
+
+        <TextView
+            android:id="@+id/v_param_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="ISO"
+            android:textColor="#FFD700"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:layout_marginTop="2dp"
+            android:layout_marginBottom="2dp" />
+
+        <!-- Slider 放在 FrameLayout 裡旋轉，寬度由 code 動態設定 -->
+        <FrameLayout
+            android:id="@+id/v_slider_frame"
+            android:layout_width="36dp"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipChildren="false">
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/vertical_param_slider"
+                android:layout_width="200dp"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:rotation="270"
+                app:tickVisible="false"
+                app:thumbColor="#FFD700"
+                app:trackColorActive="#FFD700"
+                app:trackColorInactive="#60FFFFFF"
+                app:thumbRadius="10dp"
+                app:trackHeight="3dp" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/btn_v_param_minus"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:text="-"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:background="?selectableItemBackgroundBorderless" />
+    </LinearLayout>
+
     <!-- Parameter Control Panel (Visible only when a parameter is selected in PRO mode) -->
+
     <LinearLayout
         android:id="@+id/parameter_control_panel"
         android:layout_width="match_parent"
@@ -443,7 +519,7 @@
         android:orientation="vertical"
         android:visibility="gone"
         android:background="#80000000"
-        app:layout_constraintBottom_toTopOf="@+id/parameter_scroll_view"
+        app:layout_constraintBottom_toTopOf="@+id/pro_status_bar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -523,10 +599,10 @@
         android:id="@+id/parameter_scroll_view"
         android:layout_width="wrap_content"
         android:layout_height="40dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="4dp"
         android:scrollbars="none"
         android:visibility="gone"
-        app:layout_constraintBottom_toTopOf="@+id/mode_layout"
+        app:layout_constraintBottom_toTopOf="@+id/pro_status_bar"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
 
@@ -540,17 +616,212 @@
             android:gravity="center_vertical" />
     </HorizontalScrollView>
 
+    <!-- AUTO/HDR 模式狀態列 (訊息 HUD)：放在 mode_layout 之上 -->
+    <LinearLayout
+        android:id="@+id/auto_status_hud"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="4dp"
+        android:gravity="bottom"
+        android:visibility="visible"
+        app:layout_constraintBottom_toTopOf="@+id/mode_layout"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:background="#80000000"
+            android:padding="6dp">
+            
+            <!-- S -->
+            <LinearLayout android:id="@+id/hud_s_block"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="center_horizontal" android:layout_marginEnd="12dp"
+                android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+                <TextView android:text="S" android:textColor="#808080" android:textSize="9sp"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <TextView android:id="@+id/hud_shutter" android:text="1/60s" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <!-- ISO -->
+            <LinearLayout android:id="@+id/hud_iso_block"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="center_horizontal" android:layout_marginEnd="12dp"
+                android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+                <TextView android:text="ISO" android:textColor="#808080" android:textSize="9sp"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <TextView android:id="@+id/hud_iso" android:text="1600" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <!-- WB -->
+            <LinearLayout android:id="@+id/hud_wb_block"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="center_horizontal" android:layout_marginEnd="12dp"
+                android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+                <TextView android:text="WB" android:textColor="#808080" android:textSize="9sp"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <TextView android:id="@+id/hud_wb" android:text="AUTO" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <!-- EV -->
+            <LinearLayout android:id="@+id/hud_ev_block"
+                android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:orientation="vertical" android:gravity="center_horizontal"
+                android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+                <TextView android:text="EV" android:textColor="#808080" android:textSize="9sp"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+                <TextView android:id="@+id/hud_ev" android:text="+0" android:textColor="#FFFFFF"
+                    android:textSize="12sp" android:textStyle="bold"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            </LinearLayout>
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- 直方圖也移到這裡，避免頂部選單擋住，且與 HUD 分離以便 PRO 模式獨立顯示 -->
+    <com.example.telescopeapp.HistogramView
+        android:id="@+id/histogram_view"
+        android:layout_width="100dp"
+        android:layout_height="60dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/mode_layout"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- PRO 模式數值列：常駐顯示所有參數當前值 -->
+    <LinearLayout
+        android:id="@+id/pro_status_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:background="#CC000000"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/mode_layout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <!-- EV -->
+        <LinearLayout android:id="@+id/status_ev_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="EV" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_ev" android:text="+0" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- A (Aperture) -->
+        <LinearLayout android:id="@+id/status_a_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="A" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_aperture" android:text="F--" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- S (Shutter) -->
+        <LinearLayout android:id="@+id/status_s_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="S" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_shutter" android:text="1/100" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- ISO -->
+        <LinearLayout android:id="@+id/status_iso_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="ISO" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_iso" android:text="100" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- WB -->
+        <LinearLayout android:id="@+id/status_wb_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="WB" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_wb" android:text="AUTO" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+
+        <!-- F (Focus) -->
+        <LinearLayout android:id="@+id/status_f_block"
+            android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:orientation="vertical" android:gravity="center_horizontal"
+            android:clickable="true" android:focusable="true" android:background="?selectableItemBackground">
+            <TextView android:text="F" android:textColor="#808080" android:textSize="10sp"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+            <TextView android:id="@+id/status_focus" android:text="AF" android:textColor="#FFFFFF"
+                android:textSize="13sp" android:textStyle="bold"
+                android:layout_width="wrap_content" android:layout_height="wrap_content" />
+        </LinearLayout>
+    </LinearLayout>
+
     <!-- Mode Selector -->
+
     <LinearLayout
         android:id="@+id/mode_layout"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="40dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginBottom="4dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        app:layout_constraintBottom_toTopOf="@+id/bottom_control_bar"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        app:layout_constraintBottom_toTopOf="@+id/ev_panel"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent">
+
+        <!-- EV 按鈕：左對齊 -->
+        <TextView
+            android:id="@+id/btn_ev_toggle"
+            android:layout_width="48dp"
+            android:layout_height="36dp"
+            android:gravity="center"
+            android:text="EV"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:background="@drawable/bg_pill_button"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- 中間湋满空間，推模式選取統一居中 -->
+        <android.widget.Space
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/mode_auto"
@@ -558,7 +829,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+            android:paddingEnd="8dp"
             android:text="@string/mode_auto"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
@@ -569,12 +840,100 @@
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:gravity="center"
-            android:paddingStart="16dp"
+            android:paddingStart="8dp"
             android:paddingEnd="16dp"
             android:text="@string/mode_manual"
             android:textColor="#FFFFFF"
             android:textSize="14sp"
             android:textStyle="bold" />
+
+        <!-- 後方填滿空間 -->
+        <android.widget.Space
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <!-- 交換按鈕：右對齊 -->
+        <ImageButton
+            android:id="@+id/btn_swap_sliders"
+            android:layout_width="48dp"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_pill_button"
+            android:src="@android:drawable/ic_popup_sync"
+            android:contentDescription="Swap Sliders"
+            app:tint="#FFFFFF" />
+    </LinearLayout>
+
+    <!-- EV 調整滑桂面板：啟用時出現，三角符跟著往下位移 -->
+    <LinearLayout
+        android:id="@+id/ev_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="80dp"
+        android:orientation="vertical"
+        android:background="#E61A1A1A"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@+id/bottom_control_bar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/ev_value_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:text="0 EV"
+            android:textColor="#FFD700"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="2dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp">
+
+            <TextView
+                android:id="@+id/btn_ev_minus"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="-"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackgroundBorderless" />
+
+            <com.google.android.material.slider.Slider
+                android:id="@+id/ev_slider"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:valueFrom="-3.0"
+                android:valueTo="3.0"
+                android:stepSize="0.1"
+                android:value="0.0"
+                app:tickVisible="false"
+                app:thumbColor="#FFD700"
+                app:trackColorActive="#FFD700"
+                app:trackColorInactive="#80FFFFFF" />
+
+            <TextView
+                android:id="@+id/btn_ev_plus"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:gravity="center"
+                android:text="+"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:background="?selectableItemBackgroundBorderless" />
+        </LinearLayout>
     </LinearLayout>
 
     <!-- 底部控制區 (半透明) -->
@@ -590,10 +949,11 @@
         <!-- 動態鏡頭切換列 -->
         <HorizontalScrollView
             android:id="@+id/zoom_scroll_view"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="50dp"
             android:layout_marginTop="16dp"
             android:scrollbars="none"
+            android:overScrollMode="never"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
@@ -621,14 +981,19 @@
 
         <ImageView
             android:id="@+id/thumbnail_view"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:background="?selectableItemBackgroundBorderless"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="@drawable/bg_thumbnail"
             android:scaleType="centerCrop"
-            android:layout_marginEnd="24dp"
+            android:src="@android:drawable/ic_menu_gallery"
+            android:padding="8dp"
+            android:layout_marginEnd="16dp"
+            android:clickable="true"
+            android:focusable="true"
             app:layout_constraintBottom_toBottomOf="@id/image_capture_button"
             app:layout_constraintTop_toTopOf="@id/image_capture_button"
-            app:layout_constraintEnd_toStartOf="@id/image_capture_button" />
+            app:layout_constraintEnd_toStartOf="@id/image_capture_button"
+            app:layout_constraintStart_toStartOf="parent" />
 
         <ImageButton
             android:id="@+id/video_capture_button"
