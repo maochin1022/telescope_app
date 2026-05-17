@@ -570,13 +570,15 @@ class MainActivity : AppCompatActivity() {
         backgroundHandler?.post {
             val projection = arrayOf(
                 MediaStore.Images.Media._ID,
-                MediaStore.Images.Media.DATE_TAKEN
+                MediaStore.Images.Media.DATE_TAKEN,
+                MediaStore.Images.Media.DISPLAY_NAME
             )
+            val selection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'Telescope_%'"
             val sortOrder = "${MediaStore.Images.Media.DATE_TAKEN} DESC"
             val queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
             
             try {
-                contentResolver.query(queryUri, projection, null, null, sortOrder)?.use { cursor ->
+                contentResolver.query(queryUri, projection, selection, null, sortOrder)?.use { cursor ->
                     if (cursor.moveToFirst()) {
                         val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                         val id = cursor.getLong(idColumn)
@@ -2997,7 +2999,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "TelescopeApp"
-        private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
+        private const val FILENAME_FORMAT = "'Telescope_'yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
     }
