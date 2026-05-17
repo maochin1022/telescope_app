@@ -150,7 +150,23 @@ class MainActivity : AppCompatActivity() {
         }
         return filtered.distinct().sorted()
     }
+
+    private fun getJpegOrientation(deviceOrientationDegrees: Int): Int {
+        val sensorOrientation = currentCharacteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        val deviceOrientation = (deviceOrientationDegrees + 45) / 90 * 90
+        val facingFront = currentCharacteristics?.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+        val sign = if (facingFront) -1 else 1
+        var rotation = (sensorOrientation + deviceOrientation * sign + 360) % 360
+        if (isFlipEnabled) {
+            rotation = (rotation + 180) % 360
+        }
+        return rotation
+    }
     
+    private var lastCaptureRotation = 0
+    private var currentDeviceOrientation = 0
+    private var orientationEventListener: android.view.OrientationEventListener? = null
+
     // 縮時攝影與不活動偵測
     private var timeLapseIntervalMs: Long = 0
     private val timeLapseHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -192,6 +208,18 @@ class MainActivity : AppCompatActivity() {
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         cameraManager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+
+        orientationEventListener = object : android.view.OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == ORIENTATION_UNKNOWN) return
+                currentDeviceOrientation = when {
+                    orientation >= 315 || orientation < 45 -> 0
+                    orientation in 45..134 -> 90
+                    orientation in 135..224 -> 180
+                    else -> 270
+                }
+            }
+        }
 
         if (allPermissionsGranted()) {
             setupDynamicLenses()
@@ -591,6 +619,7 @@ class MainActivity : AppCompatActivity() {
         magnetometer?.let { sensorManager.registerListener(sensorListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
         startBackgroundThread()
         loadLatestThumbnail()
+        orientationEventListener?.enable()
         if (viewBinding.viewFinder.isAvailable) {
             openCamera(currentCameraId ?: return)
         } else {
@@ -600,6 +629,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        orientationEventListener?.disable()
         timeLapseHandler.removeCallbacksAndMessages(null)
         inactivityHandler.removeCallbacksAndMessages(null)
         sensorManager.unregisterListener(sensorListener)
@@ -1261,6 +1291,8 @@ class MainActivity : AppCompatActivity() {
         val reader = imageReader ?: return
         val session = captureSession ?: return
 
+        lastCaptureRotation = getJpegOrientation(currentDeviceOrientation)
+
         triggerShutterEffect()
         mediaActionSound?.play(android.media.MediaActionSound.SHUTTER_CLICK)
         
@@ -1282,7 +1314,7 @@ class MainActivity : AppCompatActivity() {
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                     set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMinIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
                     set(CaptureRequest.SENSOR_EXPOSURE_TIME, (currentExposureNs / 2).coerceAtLeast(exposureRange?.lower ?: 1000L))
-                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                    set(CaptureRequest.JPEG_ORIENTATION, lastCaptureRotation)
                 }.build())
                 
                 // Shot 2: High ISO (Brighten Shadows/Face)
@@ -1292,7 +1324,7 @@ class MainActivity : AppCompatActivity() {
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                     set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMaxIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
                     set(CaptureRequest.SENSOR_EXPOSURE_TIME, currentExposureNs)
-                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                    set(CaptureRequest.JPEG_ORIENTATION, lastCaptureRotation)
                 }.build())
                 
                 hdrImageBuffer.clear()
@@ -1302,7 +1334,7 @@ class MainActivity : AppCompatActivity() {
                     addTarget(reader.surface)
                     if (isRawEnabled && rawImageReader != null) addTarget(rawImageReader!!.surface)
                     applyCameraSettings(this)
-                    set(CaptureRequest.JPEG_ORIENTATION, if (isFlipEnabled) 180 else 0)
+                    set(CaptureRequest.JPEG_ORIENTATION, lastCaptureRotation)
                 }.build())
             }
 
@@ -1385,6 +1417,13 @@ class MainActivity : AppCompatActivity() {
         uri?.let {
             contentResolver.openOutputStream(it)?.use { output ->
                 DngCreator(chars, result).use { dngCreator ->
+                    val exifOrientation = when (lastCaptureRotation) {
+                        90 -> android.media.ExifInterface.ORIENTATION_ROTATE_90
+                        180 -> android.media.ExifInterface.ORIENTATION_ROTATE_180
+                        270 -> android.media.ExifInterface.ORIENTATION_ROTATE_270
+                        else -> android.media.ExifInterface.ORIENTATION_NORMAL
+                    }
+                    dngCreator.setOrientation(exifOrientation)
                     dngCreator.writeImage(output, image)
                 }
             }
@@ -1396,6 +1435,16 @@ class MainActivity : AppCompatActivity() {
         backgroundHandler?.post {
             try {
                 var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                
+                val rotation = lastCaptureRotation
+                if (rotation != 0) {
+                    val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                    if (rotated != bitmap) {
+                        bitmap.recycle()
+                        bitmap = rotated
+                    }
+                }
                 
                 // 套用色彩校正與 LUT 到 JPG
                 if (isProGradingEnabled || currentStyleIndex > 0 || customLutBitmap != null) {
