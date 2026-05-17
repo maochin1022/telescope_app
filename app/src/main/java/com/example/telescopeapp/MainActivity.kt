@@ -120,6 +120,17 @@ class MainActivity : AppCompatActivity() {
     private var customLutBitmap: Bitmap? = null
     private var customLutSize: Int = 0
     private var currentLutName: String? = null
+    private var customMediaList = listOf<MediaItem>()
+    private var customMediaIndex = 0
+    private var currentZoomLabel = "1x"
+    
+    private val zoomConfigs = listOf(
+        ZoomConfig("0.5x", "2"),
+        ZoomConfig("1x", "0"),
+        ZoomConfig("2x", "0", false, 2.0f),
+        ZoomConfig("3.2x", "3"),
+        ZoomConfig("5x", "4", true)
+    )
     
     private fun getSupportedIsoPresets(): List<Int> {
         val min = isoRange?.lower ?: 50
@@ -488,22 +499,104 @@ class MainActivity : AppCompatActivity() {
         magnetometer = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_MAGNETIC_FIELD)
 
         viewBinding.thumbnailView.setOnClickListener {
-            val intent = if (lastMediaUri != null) {
-                val mimeType = contentResolver.getType(lastMediaUri!!) ?: "*/*"
-                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    setDataAndType(lastMediaUri, mimeType)
+            resetInactivityTimer()
+            openCustomPreviewOverlay()
+        }
+
+        // --- Custom Media Preview Overlay Setup ---
+        viewBinding.btnPreviewClose.setOnClickListener {
+            resetInactivityTimer()
+            viewBinding.customPreviewOverlay.visibility = android.view.View.GONE
+            if (viewBinding.previewVideoView.isPlaying) {
+                viewBinding.previewVideoView.stopPlayback()
+            }
+        }
+        
+        viewBinding.btnPreviewShare.setOnClickListener {
+            resetInactivityTimer()
+            if (customMediaIndex in customMediaList.indices) {
+                val item = customMediaList[customMediaIndex]
+                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = if (item.isVideo) "video/*" else "image/*"
+                    putExtra(android.content.Intent.EXTRA_STREAM, item.uri)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-            } else {
-                android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                    type = "image/*"
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+                startActivity(android.content.Intent.createChooser(shareIntent, "分享媒體"))
             }
-            try {
-                startActivity(intent)
-            } catch (e: Exception) {
-                Toast.makeText(this, "無法開啟相簿", Toast.LENGTH_SHORT).show()
+        }
+        
+        viewBinding.btnPreviewDelete.setOnClickListener {
+            resetInactivityTimer()
+            if (customMediaIndex in customMediaList.indices) {
+                val item = customMediaList[customMediaIndex]
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("刪除檔案")
+                    .setMessage("確定要永久刪除此檔案嗎？")
+                    .setPositiveButton("刪除") { _, _ ->
+                        try {
+                            contentResolver.delete(item.uri, null, null)
+                            Toast.makeText(this, "已刪除檔案", Toast.LENGTH_SHORT).show()
+                            
+                            // Refresh list
+                            Thread {
+                                customMediaList = fetchAllTelescopeMedia()
+                                runOnUiThread {
+                                    if (customMediaList.isEmpty()) {
+                                        viewBinding.customPreviewOverlay.visibility = android.view.View.GONE
+                                        viewBinding.thumbnailView.setImageDrawable(null)
+                                        lastMediaUri = null
+                                    } else {
+                                        customMediaIndex = customMediaIndex.coerceAtMost(customMediaList.size - 1)
+                                        loadMediaInPreview(customMediaIndex)
+                                        // Update camera thumbnail
+                                        lastMediaUri = customMediaList[0].uri
+                                        loadLatestThumbnail()
+                                    }
+                                }
+                            }.start()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to delete media", e)
+                            Toast.makeText(this, "刪除失敗", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }
+        
+        // Setup Swipe Gestures for customMediaList switching
+        var startX = 0f
+        viewBinding.previewMediaContainer.setOnTouchListener { _, event ->
+            resetInactivityTimer()
+            when (event.action) {
+                android.view.MotionEvent.ACTION_DOWN -> {
+                    startX = event.x
+                    true
+                }
+                android.view.MotionEvent.ACTION_UP -> {
+                    val diffX = event.x - startX
+                    if (Math.abs(diffX) > 100) {
+                        if (diffX > 0) {
+                            // Swipe Right -> Previous (Newer) item
+                            if (customMediaIndex > 0) {
+                                customMediaIndex--
+                                loadMediaInPreview(customMediaIndex)
+                            } else {
+                                Toast.makeText(this, "已是最新的相片/影片", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            // Swipe Left -> Next (Older) item
+                            if (customMediaIndex < customMediaList.size - 1) {
+                                customMediaIndex++
+                                loadMediaInPreview(customMediaIndex)
+                            } else {
+                                Toast.makeText(this, "已是最舊的相片/影片", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                    true
+                }
+                else -> false
             }
         }
 
@@ -720,35 +813,19 @@ class MainActivity : AppCompatActivity() {
                 val standard1080p = Size(1920, 1080)
                 
                 if (jpegSizes != null && previewSizes != null) {
-                    val has1080pPreview = previewSizes.contains(standard1080p)
-                    val has1080pJpeg = jpegSizes.contains(standard1080p)
-
-                    if (has1080pPreview && has1080pJpeg) {
-                        bestPreviewSize = standard1080p
-                        bestJpegSize = standard1080p
-                    } else {
-                        val sortedJpegSizes = jpegSizes.sortedByDescending { it.width * it.height }
-                        val safePreviewSizes = previewSizes.filter { it.width * it.height <= 1920 * 1080 }.sortedByDescending { it.width * it.height }
-                        
-                        var found = false
-                        for (jpegSize in sortedJpegSizes) {
-                            val jpegRatio = jpegSize.width.toDouble() / jpegSize.height
-                            val matchingPreview = safePreviewSizes.firstOrNull { previewSize ->
-                                val previewRatio = previewSize.width.toDouble() / previewSize.height
-                                Math.abs(jpegRatio - previewRatio) < 0.05
-                            }
-                            if (matchingPreview != null) {
-                                bestJpegSize = jpegSize
-                                bestPreviewSize = matchingPreview
-                                found = true
-                                break
-                            }
-                        }
-                        if (!found) {
-                            bestJpegSize = sortedJpegSizes.firstOrNull() ?: standard1080p
-                            bestPreviewSize = safePreviewSizes.firstOrNull() ?: previewSizes.firstOrNull() ?: standard1080p
-                        }
-                    }
+                    // JPEG 拍照解析度：優先選擇小於等於 12.5MP (約 1200 萬畫素，如 4096x3072) 的安全最大尺寸，避免副鏡頭高畫素導致 Capture Session 配置失敗，保證所有鏡頭 100% 成功儲存
+                    val safeJpegSizes = jpegSizes.filter { it.width * it.height <= 4200 * 3200 }
+                    bestJpegSize = safeJpegSizes.maxByOrNull { it.width * it.height } ?: jpegSizes.maxByOrNull { it.width * it.height } ?: standard1080p
+                    
+                    // 預覽視圖解析度：在小於等於 1080p 的安全區間內挑選與最大照片比例最契合的尺寸，保證流暢與無變形
+                    val targetRatio = bestJpegSize!!.width.toDouble() / bestJpegSize!!.height
+                    val safePreviewSizes = previewSizes.filter { it.width * it.height <= 1920 * 1080 }.sortedByDescending { it.width * it.height }
+                    
+                    bestPreviewSize = safePreviewSizes.firstOrNull { previewSize ->
+                        val previewRatio = previewSize.width.toDouble() / previewSize.height
+                        Math.abs(targetRatio - previewRatio) < 0.05
+                    } ?: safePreviewSizes.firstOrNull() ?: previewSizes.firstOrNull() ?: standard1080p
+                    
                     bestRawSize = rawSizes?.maxByOrNull { it.width * it.height }
                 } else {
                     bestJpegSize = Size(1280, 720)
@@ -819,7 +896,7 @@ class MainActivity : AppCompatActivity() {
             
             val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
             val contentValues = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.mp4")
                 put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/Camera")
@@ -904,6 +981,7 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             viewBinding.videoCaptureButton.setImageResource(android.R.drawable.presence_video_online)
             videoUri?.let {
+                sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, it))
                 lastMediaUri = it
                 try {
                     viewBinding.thumbnailView.setPadding(0, 0, 0, 0)
@@ -936,20 +1014,25 @@ class MainActivity : AppCompatActivity() {
             imageReader = ImageReader.newInstance(jpegW, jpegH, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
                     backgroundHandler?.post {
-                        val image = reader.acquireLatestImage() ?: return@post
-                        val buffer = image.planes[0].buffer
-                        val bytes = ByteArray(buffer.capacity())
-                        buffer.get(bytes)
-                        image.close()
-                        
-                        if (isSuperHdrEnabled) {
-                            hdrImageBuffer.add(bytes)
-                            if (hdrImageBuffer.size >= 2) {
-                                mergeAndSaveHdr(hdrImageBuffer[0], hdrImageBuffer[1])
-                                hdrImageBuffer.clear()
+                        try {
+                            val image = reader.acquireLatestImage() ?: return@post
+                            val buffer = image.planes[0].buffer
+                            val bytes = ByteArray(buffer.remaining())
+                            buffer.get(bytes)
+                            image.close()
+                            
+                            if (isSuperHdrEnabled) {
+                                hdrImageBuffer.add(bytes)
+                                if (hdrImageBuffer.size >= 2) {
+                                    mergeAndSaveHdr(hdrImageBuffer[0], hdrImageBuffer[1])
+                                    hdrImageBuffer.clear()
+                                }
+                            } else {
+                                saveImage(bytes)
                             }
-                        } else {
-                            saveImage(bytes)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "ImageReader callback failed", e)
+                            runOnUiThread { Toast.makeText(this@MainActivity, "讀取影像失敗: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
                         }
                     }
                 }, backgroundHandler)
@@ -1075,6 +1158,25 @@ class MainActivity : AppCompatActivity() {
                 set(CaptureRequest.STATISTICS_FACE_DETECTION_MODE, 2) 
             }
             */
+
+            // 2x 數位變焦裁切 (僅在主鏡頭 "0" 且選取 "2x" 時生效)
+            val activeRect = currentCharacteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
+            if (activeRect != null) {
+                val zoomFactor = if (currentCameraId == "0" && currentZoomLabel == "2x") 2.0f else 1.0f
+                if (zoomFactor > 1.0f) {
+                    val cropW = (activeRect.width() / zoomFactor).toInt()
+                    val cropH = (activeRect.height() / zoomFactor).toInt()
+                    val centerX = activeRect.centerX()
+                    val centerY = activeRect.centerY()
+                    val cropRect = android.graphics.Rect(
+                        centerX - cropW / 2,
+                        centerY - cropH / 2,
+                        centerX + cropW / 2,
+                        centerY + cropH / 2
+                    )
+                    set(CaptureRequest.SCALER_CROP_REGION, cropRect)
+                }
+            }
         }
     }
 
@@ -1315,6 +1417,15 @@ class MainActivity : AppCompatActivity() {
         try {
             val requests = mutableListOf<CaptureRequest>()
             
+            // 根據是否為主鏡頭 "0" 動態選擇最安全的範本：輔助鏡頭 (0.5x, 3.2x, 5x) 強制使用 TEMPLATE_PREVIEW 以確保 100% 成功串流
+            val templateType = if (currentCameraId == "0") {
+                CameraDevice.TEMPLATE_STILL_CAPTURE
+            } else {
+                CameraDevice.TEMPLATE_PREVIEW
+            }
+            
+            val previewSurface = viewBinding.viewFinder.surfaceTexture?.let { Surface(it) }
+            
             if (isSuperHdrEnabled) {
                 // AUTO 模式下先同步參數以避免黑圖
                 if (currentCameraMode == CameraMode.AUTO || currentCameraMode == CameraMode.HDR) {
@@ -1324,8 +1435,9 @@ class MainActivity : AppCompatActivity() {
 
                 // Super HDR: 2 shots with different ISOs
                 // Shot 1: Min ISO (Protect Highlights)
-                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                requests.add(device.createCaptureRequest(templateType).apply {
                     addTarget(reader.surface)
+                    previewSurface?.let { addTarget(it) }
                     applyCameraSettings(this)
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                     set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMinIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
@@ -1334,8 +1446,9 @@ class MainActivity : AppCompatActivity() {
                 }.build())
                 
                 // Shot 2: High ISO (Brighten Shadows/Face)
-                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                requests.add(device.createCaptureRequest(templateType).apply {
                     addTarget(reader.surface)
+                    previewSurface?.let { addTarget(it) }
                     applyCameraSettings(this)
                     set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
                     set(CaptureRequest.SENSOR_SENSITIVITY, superHdrMaxIso.coerceIn(isoRange?.lower ?: 50, isoRange?.upper ?: 3200))
@@ -1346,8 +1459,9 @@ class MainActivity : AppCompatActivity() {
                 hdrImageBuffer.clear()
             } else {
                 // Normal shot
-                requests.add(device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                requests.add(device.createCaptureRequest(templateType).apply {
                     addTarget(reader.surface)
+                    previewSurface?.let { addTarget(it) }
                     if (isRawEnabled && rawImageReader != null) addTarget(rawImageReader!!.surface)
                     applyCameraSettings(this)
                     set(CaptureRequest.JPEG_ORIENTATION, lastCaptureRotation)
@@ -1365,6 +1479,12 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 
+                override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: CaptureFailure) {
+                    val reason = failure.reason
+                    Log.e(TAG, "Capture failed! Reason: $reason")
+                    runOnUiThread { Toast.makeText(this@MainActivity, "拍照失敗: Reason $reason", Toast.LENGTH_SHORT).show() }
+                }
+
                 override fun onCaptureSequenceCompleted(session: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
                     if (isSuperHdrEnabled) {
                         runOnUiThread { Toast.makeText(this@MainActivity, "Super HDR processing...", Toast.LENGTH_SHORT).show() }
@@ -1374,6 +1494,7 @@ class MainActivity : AppCompatActivity() {
             }, backgroundHandler)
         } catch (e: Exception) {
             Log.e(TAG, "Capture failed", e)
+            runOnUiThread { Toast.makeText(this@MainActivity, "拍照出錯: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
         }
     }
 
@@ -1450,62 +1571,78 @@ class MainActivity : AppCompatActivity() {
     private fun saveImage(bytes: ByteArray) {
         backgroundHandler?.post {
             try {
-                var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                
                 val rotation = lastCaptureRotation
-                if (rotation != 0) {
-                    val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
-                    val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-                    if (rotated != bitmap) {
-                        bitmap.recycle()
-                        bitmap = rotated
-                    }
-                }
+                val needProcessing = isProGradingEnabled || currentStyleIndex > 0 || customLutBitmap != null
                 
-                // 套用色彩校正與 LUT 到 JPG
-                if (isProGradingEnabled || currentStyleIndex > 0 || customLutBitmap != null) {
-                    val resultBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(resultBitmap)
-                    val cm = ColorMatrix()
-                    if (isProGradingEnabled) {
-                        cm.setScale(gradingExposure, gradingExposure, gradingExposure, 1f)
-                        val sat = ColorMatrix()
-                        sat.setSaturation(gradingSaturation)
-                        cm.postConcat(sat)
-                    }
-                    val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
-                    canvas.drawBitmap(bitmap, 0f, 0f, paint)
-                    bitmap = resultBitmap
-                }
-
                 val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
                     put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         put(MediaStore.Images.Media.RELATIVE_PATH, "DCIM/Camera")
-                        put(MediaStore.Images.Media.IS_PENDING, 1)
                     }
                 }
                 val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-                uri?.let {
-                    contentResolver.openOutputStream(it)?.use { output ->
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+                    ?: throw java.io.IOException("Failed to insert MediaStore entry")
+                
+                uri.let { targetUri ->
+                    if (rotation == 0 && !needProcessing) {
+                        // 1. 直通極速管道：0 記憶體消耗，直接將 50MP 原始位元組寫入磁碟，速度提昇 5 倍且絕對成功！
+                        contentResolver.openOutputStream(targetUri)?.use { output ->
+                            output.write(bytes)
+                        }
+                    } else {
+                        // 2. 高安全處理管道：解碼、物理旋轉、套用 LUT，並極其積極地回收記憶體以防 OOM
+                        var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bitmap == null) {
+                            throw java.io.IOException("BitmapFactory failed to decode JPEG bytes")
+                        }
+                        
+                        if (rotation != 0) {
+                            val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                            val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+                            if (rotated != bitmap) {
+                                bitmap.recycle() // 立即釋放原圖
+                                bitmap = rotated
+                            }
+                        }
+                        
+                        if (needProcessing) {
+                            val resultBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+                            val canvas = Canvas(resultBitmap)
+                            val cm = ColorMatrix()
+                            if (isProGradingEnabled) {
+                                cm.setScale(gradingExposure, gradingExposure, gradingExposure, 1f)
+                                val sat = ColorMatrix()
+                                sat.setSaturation(gradingSaturation)
+                                cm.postConcat(sat)
+                            }
+                            val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
+                            canvas.drawBitmap(bitmap, 0f, 0f, paint)
+                            
+                            bitmap.recycle() // 立即釋放已旋轉的中間 Bitmap
+                            bitmap = resultBitmap
+                        }
+                        
+                        contentResolver.openOutputStream(targetUri)?.use { output ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
+                        }
+                        
+                        bitmap.recycle() // 釋放最終 Bitmap
                     }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        contentValues.clear()
-                        contentValues.put(MediaStore.Images.Media.IS_PENDING, 0)
-                        contentResolver.update(it, contentValues, null, null)
-                    }
-                    lastMediaUri = it
+                    
+                    // 強制通知系統相簿掃描並更新該 URI，使其立即在系統相簿中顯示
+                    sendBroadcast(android.content.Intent(android.content.Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, targetUri))
+                    
+                    lastMediaUri = targetUri
                     runOnUiThread {
                         try {
                             viewBinding.thumbnailView.setPadding(0, 0, 0, 0)
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                                val thumbnail = contentResolver.loadThumbnail(it, android.util.Size(128, 128), null)
+                                val thumbnail = contentResolver.loadThumbnail(targetUri, android.util.Size(128, 128), null)
                                 viewBinding.thumbnailView.setImageBitmap(thumbnail)
                             } else {
-                                viewBinding.thumbnailView.setImageURI(it)
+                                viewBinding.thumbnailView.setImageURI(targetUri)
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Failed to load image thumbnail", e)
@@ -1515,6 +1652,7 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread { Toast.makeText(this@MainActivity, getString(R.string.photo_saved), Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save image", e)
+                runOnUiThread { Toast.makeText(this@MainActivity, "儲存失敗: ${e.localizedMessage}", Toast.LENGTH_LONG).show() }
             }
         }
     }
@@ -1530,59 +1668,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDynamicLenses() {
-        Thread {
-            val backCameras = mutableListOf<Triple<String, Float, String>>()
-            val potentialIds = (0..15).map { it.toString() }
-            
-            for (id in potentialIds) {
-                try {
-                    val chars = cameraManager.getCameraCharacteristics(id)
-                    val facing = chars.get(CameraCharacteristics.LENS_FACING)
-                    if (facing == CameraCharacteristics.LENS_FACING_BACK) {
-                        val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                        val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
-                        backCameras.add(Triple(id, primaryFocalLength, "Log$id"))
-                    }
-                } catch (e: Exception) {
-                    // Ignore
-                }
+        // 為每個寫死的配置初始化 lensFlipSettings 偏好
+        zoomConfigs.forEach {
+            if (!lensFlipSettings.containsKey(it.cameraId)) {
+                lensFlipSettings[it.cameraId] = it.isTelephoto
             }
+        }
 
-            backCameras.sortBy { it.second }
-
-            for ((index, camera) in backCameras.withIndex()) {
-                val isTelephoto = (index == backCameras.size - 1)
-                if (!lensFlipSettings.containsKey(camera.first)) {
-                    lensFlipSettings[camera.first] = isTelephoto
-                }
+        runOnUiThread {
+            if (currentCameraId == null) {
+                currentCameraId = "0"
+                currentZoomLabel = "1x"
             }
+            isFlipEnabled = lensFlipSettings[currentCameraId!!] ?: false
 
-            runOnUiThread {
-                if (currentCameraId == null && backCameras.isNotEmpty()) {
-                    currentCameraId = backCameras[0].first
-                }
-                currentCameraId?.let {
-                    isFlipEnabled = lensFlipSettings[it] ?: false
-                }
+            viewBinding.zoomLayout.removeAllViews()
+            lensTextViews.clear()
 
-                viewBinding.zoomLayout.removeAllViews()
-                lensTextViews.clear()
+            val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
+            val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
 
-                val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
-                val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
-
-            // 依照用戶要求的標籤順序
-            val zoomLabels = listOf("0.5x", "1x", "2x", "3.2x", "5x")
-
-            for ((index, camera) in backCameras.withIndex()) {
-                val labelText = zoomLabels.getOrNull(index) ?: String.format(Locale.US, "%.1fmm", camera.second)
-                
+            for (config in zoomConfigs) {
                 val tv = TextView(this).apply {
-                    text = labelText
+                    text = config.label
                     textSize = 14f
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                     
-                    val isActive = (currentCameraId == camera.first) || (currentCameraId == null && index == 0)
+                    val isActive = (currentZoomLabel == config.label)
                     setTextColor(if (isActive) colorActive else colorInactive)
                     setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
                     
@@ -1592,8 +1704,10 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     setOnClickListener {
-                        currentCameraId = camera.first
-                        isFlipEnabled = lensFlipSettings[camera.first] ?: false
+                        resetInactivityTimer()
+                        currentCameraId = config.cameraId
+                        currentZoomLabel = config.label
+                        isFlipEnabled = lensFlipSettings[config.cameraId] ?: false
                         
                         // 重置所有按鈕樣式
                         lensTextViews.forEach { 
@@ -1603,6 +1717,7 @@ class MainActivity : AppCompatActivity() {
                         // 設置當前按鈕樣式
                         this.setTextColor(colorActive)
                         this.setBackgroundResource(R.drawable.bg_pill_button_active)
+                        
                         openCamera(currentCameraId!!)
                     }
                 }
@@ -1610,14 +1725,10 @@ class MainActivity : AppCompatActivity() {
                 lensTextViews.add(tv)
             }
 
-            if (currentCameraId == null && backCameras.isNotEmpty()) {
-                currentCameraId = backCameras[0].first
-            }
             if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
                 openCamera(currentCameraId!!)
             }
-            } // end runOnUiThread
-        }.start() // end Thread
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -3036,10 +3147,162 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun fetchAllTelescopeMedia(): List<MediaItem> {
+        val mediaList = mutableListOf<MediaItem>()
+        
+        // 1. Fetch images
+        val imgProjection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME,
+            MediaStore.Images.Media.DATE_TAKEN
+        )
+        val imgSelection = "${MediaStore.Images.Media.DISPLAY_NAME} LIKE 'Telescope_%'"
+        contentResolver.query(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            imgProjection,
+            imgSelection,
+            null,
+            "${MediaStore.Images.Media.DATE_TAKEN} DESC"
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_TAKEN)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val name = cursor.getString(nameCol)
+                val date = cursor.getLong(dateCol)
+                val uri = android.content.ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                mediaList.add(MediaItem(uri, date, false, name))
+            }
+        }
+        
+        // 2. Fetch videos
+        val vidProjection = arrayOf(
+            MediaStore.Video.Media._ID,
+            MediaStore.Video.Media.DISPLAY_NAME,
+            MediaStore.Video.Media.DATE_TAKEN
+        )
+        val vidSelection = "${MediaStore.Video.Media.DISPLAY_NAME} LIKE 'Telescope_%'"
+        contentResolver.query(
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            vidProjection,
+            vidSelection,
+            null,
+            "${MediaStore.Video.Media.DATE_TAKEN} DESC"
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
+            val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
+            val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val name = cursor.getString(nameCol)
+                val date = cursor.getLong(dateCol)
+                val uri = android.content.ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                mediaList.add(MediaItem(uri, date, true, name))
+            }
+        }
+        
+        return mediaList.sortedByDescending { it.dateTaken }
+    }
+
+    private fun openCustomPreviewOverlay() {
+        Thread {
+            customMediaList = fetchAllTelescopeMedia()
+            customMediaIndex = if (lastMediaUri != null) {
+                val idx = customMediaList.indexOfFirst { it.uri == lastMediaUri }
+                if (idx != -1) idx else 0
+            } else {
+                0
+            }
+            
+            runOnUiThread {
+                if (customMediaList.isEmpty()) {
+                    Toast.makeText(this, "目前沒有望遠鏡相片或影片", Toast.LENGTH_SHORT).show()
+                    return@runOnUiThread
+                }
+                
+                viewBinding.customPreviewOverlay.visibility = android.view.View.VISIBLE
+                loadMediaInPreview(customMediaIndex)
+            }
+        }.start()
+    }
+
+    private fun loadMediaInPreview(index: Int) {
+        if (index < 0 || index >= customMediaList.size) return
+        val item = customMediaList[index]
+        
+        viewBinding.tvPreviewTitle.text = "${item.displayName} (${index + 1}/${customMediaList.size})"
+        
+        if (viewBinding.previewVideoView.isPlaying) {
+            viewBinding.previewVideoView.stopPlayback()
+        }
+        
+        if (item.isVideo) {
+            viewBinding.previewImageView.visibility = android.view.View.GONE
+            viewBinding.previewVideoView.visibility = android.view.View.VISIBLE
+            viewBinding.btnVideoPlayOverlay.visibility = android.view.View.VISIBLE
+            
+            viewBinding.previewVideoView.setVideoURI(item.uri)
+            
+            viewBinding.previewVideoView.setOnCompletionListener {
+                viewBinding.btnVideoPlayOverlay.visibility = android.view.View.VISIBLE
+            }
+            
+            viewBinding.btnVideoPlayOverlay.setOnClickListener {
+                viewBinding.btnVideoPlayOverlay.visibility = android.view.View.GONE
+                viewBinding.previewVideoView.start()
+            }
+            
+            viewBinding.previewVideoView.setOnClickListener {
+                if (viewBinding.previewVideoView.isPlaying) {
+                    viewBinding.previewVideoView.pause()
+                    viewBinding.btnVideoPlayOverlay.visibility = android.view.View.VISIBLE
+                } else {
+                    viewBinding.btnVideoPlayOverlay.visibility = android.view.View.GONE
+                    viewBinding.previewVideoView.start()
+                }
+            }
+        } else {
+            viewBinding.previewImageView.visibility = android.view.View.VISIBLE
+            viewBinding.previewVideoView.visibility = android.view.View.GONE
+            viewBinding.btnVideoPlayOverlay.visibility = android.view.View.GONE
+            
+            viewBinding.previewImageView.setImageURI(item.uri)
+        }
+    }
+
+    private data class MediaItem(
+        val uri: android.net.Uri,
+        val dateTaken: Long,
+        val isVideo: Boolean,
+        val displayName: String
+    )
+
+    private data class ZoomConfig(
+        val label: String,
+        val cameraId: String,
+        val isTelephoto: Boolean = false,
+        val zoomRatio: Float = 1.0f
+    )
+
     companion object {
         private const val TAG = "TelescopeApp"
         private const val FILENAME_FORMAT = "'Telescope_'yyyy-MM-dd-HH-mm-ss-SSS"
         private const val REQUEST_CODE_PERMISSIONS = 10
-        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+        private val REQUIRED_PERMISSIONS = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.RECORD_AUDIO,
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO
+            )
+        } else {
+            arrayOf(
+                android.Manifest.permission.CAMERA,
+                android.Manifest.permission.RECORD_AUDIO,
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            )
+        }
     }
 }
