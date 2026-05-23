@@ -124,13 +124,7 @@ class MainActivity : AppCompatActivity() {
     private var customMediaIndex = 0
     private var currentZoomLabel = "1x"
     
-    private val zoomConfigs = listOf(
-        ZoomConfig("0.5x", "2"),
-        ZoomConfig("1x", "0"),
-        ZoomConfig("2x", "0", false, 2.0f),
-        ZoomConfig("3.2x", "3"),
-        ZoomConfig("5x", "4", true)
-    )
+    private val zoomConfigs = mutableListOf<ZoomConfig>()
     
     private fun getSupportedIsoPresets(): List<Int> {
         val min = isoRange?.lower ?: 50
@@ -173,7 +167,93 @@ class MainActivity : AppCompatActivity() {
         }
         return rotation
     }
-    
+
+    private fun getStandardJpegOrientation(deviceOrientationDegrees: Int): Int {
+        val sensorOrientation = currentCharacteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+        val deviceOrientation = (deviceOrientationDegrees + 45) / 90 * 90
+        val facingFront = currentCharacteristics?.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT
+        val sign = if (facingFront) -1 else 1
+        return (sensorOrientation + deviceOrientation * sign + 360) % 360
+    }
+
+    private fun getExifRotation(bytes: ByteArray): Int {
+        try {
+            val inputStream = java.io.ByteArrayInputStream(bytes)
+            val exifInterface = android.media.ExifInterface(inputStream)
+            val orientation = exifInterface.getAttributeInt(
+                android.media.ExifInterface.TAG_ORIENTATION,
+                android.media.ExifInterface.ORIENTATION_NORMAL
+            )
+            return when (orientation) {
+                android.media.ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                android.media.ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                android.media.ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                else -> 0
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read EXIF orientation", e)
+            return 0
+        }
+    }
+
+    private fun initializeZoomConfigs() {
+        val backCameras = mutableListOf<Pair<String, Float>>()
+        val potentialIds = (0..20).map { it.toString() }
+        for (id in potentialIds) {
+            try {
+                val chars = cameraManager.getCameraCharacteristics(id)
+                val facing = chars.get(CameraCharacteristics.LENS_FACING)
+                if (facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    val primaryFocalLength = focalLengths?.firstOrNull() ?: 0f
+                    if (primaryFocalLength > 0f) {
+                        backCameras.add(Pair(id, primaryFocalLength))
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+
+        val uniqueBackCameras = backCameras.sortedBy { it.second }
+            .distinctBy { it.second }
+
+        zoomConfigs.clear()
+        if (uniqueBackCameras.isNotEmpty()) {
+            val uw = uniqueBackCameras[0]
+            zoomConfigs.add(ZoomConfig("0.5x", uw.first))
+
+            val main = uniqueBackCameras.getOrNull(1) ?: uw
+            zoomConfigs.add(ZoomConfig("1x", main.first))
+
+            zoomConfigs.add(ZoomConfig("2x", main.first, false, 2.0f))
+
+            val tele32 = uniqueBackCameras.getOrNull(2)
+            if (tele32 != null) {
+                zoomConfigs.add(ZoomConfig("3.2x", tele32.first, true))
+            } else {
+                zoomConfigs.add(ZoomConfig("3.2x", main.first, false, 3.2f))
+            }
+
+            val tele5 = uniqueBackCameras.getOrNull(3)
+            if (tele5 != null) {
+                zoomConfigs.add(ZoomConfig("5x", tele5.first, true))
+            } else if (tele32 != null) {
+                zoomConfigs.add(ZoomConfig("5x", tele32.first, true, 1.56f))
+            } else {
+                zoomConfigs.add(ZoomConfig("5x", main.first, true, 5.0f))
+            }
+        } else {
+            zoomConfigs.addAll(listOf(
+                ZoomConfig("0.5x", "2"),
+                ZoomConfig("1x", "0"),
+                ZoomConfig("2x", "0", false, 2.0f),
+                ZoomConfig("3.2x", "3"),
+                ZoomConfig("5x", "4", true)
+            ))
+        }
+    }
+
     private val lensFlipSettings = mutableMapOf<String, Boolean>()
     private var lastCaptureRotation = 0
     private var currentDeviceOrientation = 0
@@ -1055,6 +1135,7 @@ class MainActivity : AppCompatActivity() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         if (cameraDevice == null) return
                         captureSession = session
+                        configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
                         updatePreview()
                     }
                     override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -1159,10 +1240,11 @@ class MainActivity : AppCompatActivity() {
             }
             */
 
-            // 2x 數位變焦裁切 (僅在主鏡頭 "0" 且選取 "2x" 時生效)
+            // 數位變焦裁切 (根據 ZoomConfig 的 zoomRatio)
             val activeRect = currentCharacteristics?.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             if (activeRect != null) {
-                val zoomFactor = if (currentCameraId == "0" && currentZoomLabel == "2x") 2.0f else 1.0f
+                val activeConfig = zoomConfigs.firstOrNull { it.label == currentZoomLabel }
+                val zoomFactor = activeConfig?.zoomRatio ?: 1.0f
                 if (zoomFactor > 1.0f) {
                     val cropW = (activeRect.width() / zoomFactor).toInt()
                     val cropH = (activeRect.height() / zoomFactor).toInt()
@@ -1409,7 +1491,7 @@ class MainActivity : AppCompatActivity() {
         val reader = imageReader ?: return
         val session = captureSession ?: return
 
-        lastCaptureRotation = getJpegOrientation(currentDeviceOrientation)
+        lastCaptureRotation = getStandardJpegOrientation(currentDeviceOrientation)
 
         triggerShutterEffect()
         mediaActionSound?.play(android.media.MediaActionSound.SHUTTER_CLICK)
@@ -1417,12 +1499,8 @@ class MainActivity : AppCompatActivity() {
         try {
             val requests = mutableListOf<CaptureRequest>()
             
-            // 根據是否為主鏡頭 "0" 動態選擇最安全的範本：輔助鏡頭 (0.5x, 3.2x, 5x) 強制使用 TEMPLATE_PREVIEW 以確保 100% 成功串流
-            val templateType = if (currentCameraId == "0") {
-                CameraDevice.TEMPLATE_STILL_CAPTURE
-            } else {
-                CameraDevice.TEMPLATE_PREVIEW
-            }
+            // 統一使用官方標準的 TEMPLATE_STILL_CAPTURE 以確保所有鏡頭能成功儲存 JPEG
+            val templateType = CameraDevice.TEMPLATE_STILL_CAPTURE
             
             val previewSurface = viewBinding.viewFinder.surfaceTexture?.let { Surface(it) }
             
@@ -1472,7 +1550,10 @@ class MainActivity : AppCompatActivity() {
                 override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                     if (isRawEnabled && rawImageReader != null) {
                         val rawImage = rawImageReader?.acquireLatestImage()
-                        if (rawImage != null) saveRawImage(rawImage, result)
+                        if (rawImage != null) {
+                            val rawRotation = getJpegOrientation(currentDeviceOrientation)
+                            saveRawImage(rawImage, result, rawRotation)
+                        }
                     }
                     if (!isSuperHdrEnabled) {
                         runOnUiThread { Toast.makeText(this@MainActivity, getString(R.string.photo_saved), Toast.LENGTH_SHORT).show() }
@@ -1538,7 +1619,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveRawImage(image: android.media.Image, result: TotalCaptureResult) {
+    private fun saveRawImage(image: android.media.Image, result: TotalCaptureResult, rawRotation: Int) {
         val chars = currentCharacteristics ?: return
         val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
         
@@ -1554,7 +1635,7 @@ class MainActivity : AppCompatActivity() {
         uri?.let {
             contentResolver.openOutputStream(it)?.use { output ->
                 DngCreator(chars, result).use { dngCreator ->
-                    val exifOrientation = when (lastCaptureRotation) {
+                    val exifOrientation = when (rawRotation) {
                         90 -> android.media.ExifInterface.ORIENTATION_ROTATE_90
                         180 -> android.media.ExifInterface.ORIENTATION_ROTATE_180
                         270 -> android.media.ExifInterface.ORIENTATION_ROTATE_270
@@ -1571,7 +1652,12 @@ class MainActivity : AppCompatActivity() {
     private fun saveImage(bytes: ByteArray) {
         backgroundHandler?.post {
             try {
-                val rotation = lastCaptureRotation
+                // 1. 讀取 JPEG 原始位元組中的 EXIF 旋轉角度 (由硬體 HAL 寫入)
+                val exifRotation = getExifRotation(bytes)
+                
+                // 2. 計算最終物理旋轉量
+                // 如果開啟望遠鏡修正 (isFlipEnabled)，除了原本的 EXIF 方向，必須額外物理旋轉 180 度
+                val needFlip = isFlipEnabled
                 val needProcessing = isProGradingEnabled || currentStyleIndex > 0 || customLutBitmap != null
                 
                 val name = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(System.currentTimeMillis())
@@ -1586,27 +1672,37 @@ class MainActivity : AppCompatActivity() {
                     ?: throw java.io.IOException("Failed to insert MediaStore entry")
                 
                 uri.let { targetUri ->
-                    if (rotation == 0 && !needProcessing) {
-                        // 1. 直通極速管道：0 記憶體消耗，直接將 50MP 原始位元組寫入磁碟，速度提昇 5 倍且絕對成功！
+                    // 如果不需要任何旋轉（EXIF 是 0 且沒開啟 Flip）且不需要 LUT 處理，直接寫入原始位元組以提昇效能
+                    if (exifRotation == 0 && !needFlip && !needProcessing) {
                         contentResolver.openOutputStream(targetUri)?.use { output ->
                             output.write(bytes)
                         }
                     } else {
-                        // 2. 高安全處理管道：解碼、物理旋轉、套用 LUT，並極其積極地回收記憶體以防 OOM
+                        // 解碼 Bitmap
                         var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                         if (bitmap == null) {
                             throw java.io.IOException("BitmapFactory failed to decode JPEG bytes")
                         }
                         
-                        if (rotation != 0) {
-                            val matrix = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
+                        // 計算要套用的旋轉矩陣：
+                        // 先旋轉 EXIF 指示的角度使相片直立，如果開啟了 Flip，再旋轉 180 度
+                        val matrix = android.graphics.Matrix()
+                        if (exifRotation != 0) {
+                            matrix.postRotate(exifRotation.toFloat())
+                        }
+                        if (needFlip) {
+                            matrix.postRotate(180f)
+                        }
+                        
+                        if (exifRotation != 0 || needFlip) {
                             val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
                             if (rotated != bitmap) {
-                                bitmap.recycle() // 立即釋放原圖
+                                bitmap.recycle()
                                 bitmap = rotated
                             }
                         }
                         
+                        // 套用 LUT / grading 處理
                         if (needProcessing) {
                             val resultBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
                             val canvas = Canvas(resultBitmap)
@@ -1620,15 +1716,16 @@ class MainActivity : AppCompatActivity() {
                             val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(cm) }
                             canvas.drawBitmap(bitmap, 0f, 0f, paint)
                             
-                            bitmap.recycle() // 立即釋放已旋轉的中間 Bitmap
+                            bitmap.recycle()
                             bitmap = resultBitmap
                         }
                         
+                        // 寫入儲存
                         contentResolver.openOutputStream(targetUri)?.use { output ->
                             bitmap.compress(Bitmap.CompressFormat.JPEG, 95, output)
                         }
                         
-                        bitmap.recycle() // 釋放最終 Bitmap
+                        bitmap.recycle()
                     }
                     
                     // 強制通知系統相簿掃描並更新該 URI，使其立即在系統相簿中顯示
@@ -1668,67 +1765,72 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupDynamicLenses() {
-        // 為每個寫死的配置初始化 lensFlipSettings 偏好
-        zoomConfigs.forEach {
-            if (!lensFlipSettings.containsKey(it.cameraId)) {
-                lensFlipSettings[it.cameraId] = it.isTelephoto
-            }
-        }
+        Thread {
+            initializeZoomConfigs()
 
-        runOnUiThread {
-            if (currentCameraId == null) {
-                currentCameraId = "0"
-                currentZoomLabel = "1x"
-            }
-            isFlipEnabled = lensFlipSettings[currentCameraId!!] ?: false
-
-            viewBinding.zoomLayout.removeAllViews()
-            lensTextViews.clear()
-
-            val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
-            val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
-
-            for (config in zoomConfigs) {
-                val tv = TextView(this).apply {
-                    text = config.label
-                    textSize = 14f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                    
-                    val isActive = (currentZoomLabel == config.label)
-                    setTextColor(if (isActive) colorActive else colorInactive)
-                    setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
-                    
-                    gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(140, 90).apply { 
-                        setMargins(16, 0, 16, 0) 
-                    }
-
-                    setOnClickListener {
-                        resetInactivityTimer()
-                        currentCameraId = config.cameraId
-                        currentZoomLabel = config.label
-                        isFlipEnabled = lensFlipSettings[config.cameraId] ?: false
-                        
-                        // 重置所有按鈕樣式
-                        lensTextViews.forEach { 
-                            it.setTextColor(colorInactive)
-                            it.setBackgroundResource(R.drawable.bg_pill_button)
-                        }
-                        // 設置當前按鈕樣式
-                        this.setTextColor(colorActive)
-                        this.setBackgroundResource(R.drawable.bg_pill_button_active)
-                        
-                        openCamera(currentCameraId!!)
-                    }
+            // 為每個配置初始化 lensFlipSettings 偏好
+            zoomConfigs.forEach {
+                if (!lensFlipSettings.containsKey(it.cameraId)) {
+                    lensFlipSettings[it.cameraId] = it.isTelephoto
                 }
-                viewBinding.zoomLayout.addView(tv)
-                lensTextViews.add(tv)
             }
 
-            if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
-                openCamera(currentCameraId!!)
+            runOnUiThread {
+                if (currentCameraId == null) {
+                    val mainConfig = zoomConfigs.firstOrNull { it.label == "1x" } ?: zoomConfigs.firstOrNull()
+                    currentCameraId = mainConfig?.cameraId ?: "0"
+                    currentZoomLabel = mainConfig?.label ?: "1x"
+                }
+                isFlipEnabled = lensFlipSettings[currentCameraId!!] ?: false
+
+                viewBinding.zoomLayout.removeAllViews()
+                lensTextViews.clear()
+
+                val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
+                val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
+
+                for (config in zoomConfigs) {
+                    val tv = TextView(this).apply {
+                        text = config.label
+                        textSize = 14f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        
+                        val isActive = (currentZoomLabel == config.label)
+                        setTextColor(if (isActive) colorActive else colorInactive)
+                        setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
+                        
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(140, 90).apply { 
+                            setMargins(16, 0, 16, 0) 
+                        }
+
+                        setOnClickListener {
+                            resetInactivityTimer()
+                            currentCameraId = config.cameraId
+                            currentZoomLabel = config.label
+                            isFlipEnabled = lensFlipSettings[config.cameraId] ?: false
+                            
+                            // 重置所有按鈕樣式
+                            lensTextViews.forEach { 
+                                it.setTextColor(colorInactive)
+                                it.setBackgroundResource(R.drawable.bg_pill_button)
+                            }
+                            // 設置當前按鈕樣式
+                            this.setTextColor(colorActive)
+                            this.setBackgroundResource(R.drawable.bg_pill_button_active)
+                            
+                            openCamera(currentCameraId!!)
+                        }
+                    }
+                    viewBinding.zoomLayout.addView(tv)
+                    lensTextViews.add(tv)
+                }
+
+                if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
+                    openCamera(currentCameraId!!)
+                }
             }
-        }
+        }.start()
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
