@@ -125,13 +125,7 @@ class MainActivity : AppCompatActivity() {
     private var customMediaIndex = 0
     private var currentZoomLabel = "1x"
     
-    private val zoomConfigs = listOf(
-        ZoomConfig("0.5x", 0.5f, false),
-        ZoomConfig("1x", 1.0f, false),
-        ZoomConfig("2x", 2.0f, false),
-        ZoomConfig("3.2x", 3.2f, true),
-        ZoomConfig("5x", 5.0f, true)
-    )
+    private val zoomConfigs = mutableListOf<ZoomConfig>()
     
     private fun getSupportedIsoPresets(): List<Int> {
         val min = isoRange?.lower ?: 50
@@ -1746,75 +1740,161 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupDynamicLenses() {
-        // 為每個配置初始化 lensFlipSettings 偏好
-        zoomConfigs.forEach {
-            if (!lensFlipSettings.containsKey(it.label)) {
-                lensFlipSettings[it.label] = it.isTelephoto
-            }
-        }
-
-        runOnUiThread {
-            if (currentCameraId == null) {
-                // 優先選擇後置相機中代表主鏡頭的 ID
-                currentCameraId = cameraManager.cameraIdList.firstOrNull { id ->
-                    try {
-                        val chars = cameraManager.getCameraCharacteristics(id)
-                        chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-                    } catch (e: Exception) { false }
-                } ?: "0"
-                currentZoomLabel = "1x"
-            }
-            isFlipEnabled = lensFlipSettings[currentZoomLabel] ?: false
-
-            viewBinding.zoomLayout.removeAllViews()
-            lensTextViews.clear()
-
-            val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
-            val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
-
-            for (config in zoomConfigs) {
-                val tv = TextView(this).apply {
-                    text = config.label
-                    textSize = 14f
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+    private fun initializeZoomConfigs() {
+        val list = mutableListOf<ZoomConfig>()
+        try {
+            val ids = cameraManager.cameraIdList
+            // 預設強制加入標準 1x 主鏡頭
+            list.add(ZoomConfig("1x", "0", false, 1.0f))
+            
+            // 遍歷所有鏡頭，尋找具備特定焦距特徵的實體/輔助鏡頭
+            for (id in ids) {
+                if (id == "0" || id == "1") continue
+                
+                try {
+                    val chars = cameraManager.getCameraCharacteristics(id)
+                    val facing = chars.get(CameraCharacteristics.LENS_FACING)
+                    if (facing != CameraCharacteristics.LENS_FACING_BACK) continue
                     
-                    val isActive = (currentZoomLabel == config.label)
-                    setTextColor(if (isActive) colorActive else colorInactive)
-                    setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
-                    
-                    gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(140, 90).apply { 
-                        setMargins(16, 0, 16, 0) 
-                    }
-
-                    setOnClickListener {
-                        resetInactivityTimer()
-                        currentZoomLabel = config.label
-                        isFlipEnabled = lensFlipSettings[config.label] ?: false
+                    val focalLengths = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
+                    if (focalLengths != null && focalLengths.isNotEmpty()) {
+                        val focal = focalLengths[0]
                         
-                        // 重置所有按鈕樣式
-                        lensTextViews.forEach { 
-                            it.setTextColor(colorInactive)
-                            it.setBackgroundResource(R.drawable.bg_pill_button)
+                        // 小米 14 Ultra 實體鏡頭特徵對應：
+                        // - 超廣角 12mm (focal: 1.8mm ~ 2.3mm 左右，標記為 0.5x)
+                        // - 3.2x 中望遠 75mm (focal: 9.0mm ~ 10.0mm 左右，標記為 3.2x)
+                        // - 5x 大望遠 120mm (focal: 19.0mm ~ 23.0mm 左右，標記為 5x)
+                        when {
+                            focal < 2.5f -> {
+                                if (list.none { it.label == "0.5x" }) {
+                                    list.add(ZoomConfig("0.5x", id, false, 1.0f))
+                                }
+                            }
+                            focal in 8.5f..11.0f -> {
+                                if (list.none { it.label == "3.2x" }) {
+                                    list.add(ZoomConfig("3.2x", id, true, 1.0f))
+                                }
+                            }
+                            focal > 18.0f -> {
+                                if (list.none { it.label == "5x" }) {
+                                    list.add(ZoomConfig("5x", id, true, 1.0f))
+                                }
+                            }
                         }
-                        // 設置當前按鈕樣式
-                        this.setTextColor(colorActive)
-                        this.setBackgroundResource(R.drawable.bg_pill_button_active)
-                        
-                        // 瞬時完成變焦與畫面翻轉，完全無黑畫面或延遲！
-                        configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
-                        updatePreview()
                     }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to get characteristics for camera id $id during discovery", e)
                 }
-                viewBinding.zoomLayout.addView(tv)
-                lensTextViews.add(tv)
+            }
+            
+            // 補齊可能缺失的按鈕以確保 5 個按鈕必定存在，並保證其預設變焦倍率
+            if (list.none { it.label == "0.5x" }) {
+                list.add(ZoomConfig("0.5x", "0", false, 0.5f))
+            }
+            if (list.none { it.label == "2x" }) {
+                list.add(ZoomConfig("2x", "0", false, 2.0f))
+            }
+            if (list.none { it.label == "3.2x" }) {
+                list.add(ZoomConfig("3.2x", "0", true, 3.2f))
+            }
+            if (list.none { it.label == "5x" }) {
+                list.add(ZoomConfig("5x", "0", true, 5.0f))
+            }
+            
+            // 排序保證順序正確: 0.5x -> 1x -> 2x -> 3.2x -> 5x
+            zoomConfigs.clear()
+            val order = listOf("0.5x", "1x", "2x", "3.2x", "5x")
+            order.forEach { label ->
+                list.firstOrNull { it.label == label }?.let { zoomConfigs.add(it) }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize zoom configs dynamically", e)
+        }
+        
+        // 極度保底配置
+        if (zoomConfigs.isEmpty()) {
+            zoomConfigs.add(ZoomConfig("0.5x", "0", false, 0.5f))
+            zoomConfigs.add(ZoomConfig("1x", "0", false, 1.0f))
+            zoomConfigs.add(ZoomConfig("2x", "0", false, 2.0f))
+            zoomConfigs.add(ZoomConfig("3.2x", "0", true, 3.2f))
+            zoomConfigs.add(ZoomConfig("5x", "0", true, 5.0f))
+        }
+    }
+
+    private fun setupDynamicLenses() {
+        Thread {
+            initializeZoomConfigs()
+            
+            // 為每個配置初始化 lensFlipSettings 偏好
+            zoomConfigs.forEach {
+                if (!lensFlipSettings.containsKey(it.label)) {
+                    lensFlipSettings[it.label] = it.isTelephoto
+                }
             }
 
-            if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
-                openCamera(currentCameraId!!)
+            runOnUiThread {
+                if (currentCameraId == null) {
+                    val mainConfig = zoomConfigs.firstOrNull { it.label == "1x" } ?: zoomConfigs.firstOrNull()
+                    currentCameraId = mainConfig?.cameraId ?: "0"
+                    currentZoomLabel = mainConfig?.label ?: "1x"
+                }
+                isFlipEnabled = lensFlipSettings[currentZoomLabel] ?: false
+
+                viewBinding.zoomLayout.removeAllViews()
+                lensTextViews.clear()
+
+                val colorActive = android.graphics.Color.parseColor("#000000") // 黑字
+                val colorInactive = android.graphics.Color.parseColor("#FFFFFF") // 白字
+
+                for (config in zoomConfigs) {
+                    val tv = TextView(this).apply {
+                        text = config.label
+                        textSize = 14f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        
+                        val isActive = (currentZoomLabel == config.label)
+                        setTextColor(if (isActive) colorActive else colorInactive)
+                        setBackgroundResource(if (isActive) R.drawable.bg_pill_button_active else R.drawable.bg_pill_button)
+                        
+                        gravity = Gravity.CENTER
+                        layoutParams = LinearLayout.LayoutParams(140, 90).apply { 
+                            setMargins(16, 0, 16, 0) 
+                        }
+
+                        setOnClickListener {
+                            resetInactivityTimer()
+                            val oldCameraId = currentCameraId
+                            currentZoomLabel = config.label
+                            currentCameraId = config.cameraId
+                            isFlipEnabled = lensFlipSettings[config.label] ?: false
+                            
+                            // 重置所有按鈕樣式
+                            lensTextViews.forEach { 
+                                it.setTextColor(colorInactive)
+                                it.setBackgroundResource(R.drawable.bg_pill_button)
+                            }
+                            // 設置當前按鈕樣式
+                            this.setTextColor(colorActive)
+                            this.setBackgroundResource(R.drawable.bg_pill_button_active)
+                            
+                            configureTransform(viewBinding.viewFinder.width, viewBinding.viewFinder.height)
+                            
+                            if (currentCameraId != oldCameraId) {
+                                openCamera(currentCameraId!!)
+                            } else {
+                                updatePreview()
+                            }
+                        }
+                    }
+                    viewBinding.zoomLayout.addView(tv)
+                    lensTextViews.add(tv)
+                }
+
+                if (viewBinding.viewFinder.isAvailable && currentCameraId != null) {
+                    openCamera(currentCameraId!!)
+                }
             }
-        }
+        }.start()
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
@@ -3366,8 +3446,9 @@ class MainActivity : AppCompatActivity() {
 
     private data class ZoomConfig(
         val label: String,
-        val zoomRatio: Float,
-        val isTelephoto: Boolean = false
+        val cameraId: String,
+        val isTelephoto: Boolean = false,
+        val zoomRatio: Float = 1.0f
     )
 
     companion object {
