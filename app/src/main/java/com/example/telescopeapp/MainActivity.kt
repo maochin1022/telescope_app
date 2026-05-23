@@ -41,6 +41,7 @@ class MainActivity : AppCompatActivity() {
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var previewRequestBuilder: CaptureRequest.Builder? = null
+    private var previewSurface: Surface? = null
     private var imageReader: ImageReader? = null
     private var mediaRecorder: android.media.MediaRecorder? = null
     private var isRecording = false
@@ -856,9 +857,35 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureTransform(viewWidth: Int, viewHeight: Int) {
         val matrix = Matrix()
-        if (isFlipEnabled) {
-            matrix.postRotate(180f, viewWidth / 2f, viewHeight / 2f)
+        
+        // 1. 取得預覽與 TextureView 的尺寸
+        val previewSize = bestPreviewSize ?: return
+        val rotation = display?.rotation ?: Surface.ROTATION_0
+        
+        // 2. 計算視圖中心與縮放，校正由於感光元件方向導致的扁平 (squishing) 比例問題
+        val viewRect = RectF(0f, 0f, viewWidth.toFloat(), viewHeight.toFloat())
+        val bufferRect = RectF(0f, 0f, previewSize.height.toFloat(), previewSize.width.toFloat())
+        val centerX = viewRect.centerX()
+        val centerY = viewRect.centerY()
+        
+        if (rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270) {
+            bufferRect.offset(centerX - bufferRect.centerX(), centerY - bufferRect.centerY())
+            matrix.setRectToRect(viewRect, bufferRect, Matrix.ScaleToFit.FILL)
+            val scale = Math.max(
+                viewHeight.toFloat() / previewSize.height,
+                viewWidth.toFloat() / previewSize.width
+            )
+            matrix.postScale(scale, scale, centerX, centerY)
+            matrix.postRotate((90 * (rotation - 2)).toFloat(), centerX, centerY)
+        } else if (rotation == Surface.ROTATION_180) {
+            matrix.postRotate(180f, centerX, centerY)
         }
+        
+        // 3. 在基礎方向校正之上，如果開啟望遠鏡修正，額外物理旋轉 180 度
+        if (isFlipEnabled) {
+            matrix.postRotate(180f, centerX, centerY)
+        }
+        
         viewBinding.viewFinder.setTransform(matrix)
     }
 
@@ -1089,7 +1116,10 @@ class MainActivity : AppCompatActivity() {
 
             val texture = viewBinding.viewFinder.surfaceTexture ?: return
             texture.setDefaultBufferSize(previewW, previewH)
-            val surface = Surface(texture)
+            
+            // 釋放舊的 Surface，建立並重用同一個成員變數以防止 Binder Surface 遺失
+            previewSurface?.release()
+            previewSurface = Surface(texture)
 
             imageReader = ImageReader.newInstance(jpegW, jpegH, ImageFormat.JPEG, 2).apply {
                 setOnImageAvailableListener({ reader ->
@@ -1119,10 +1149,10 @@ class MainActivity : AppCompatActivity() {
             }
 
             previewRequestBuilder = cameraDevice!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
-                addTarget(surface)
+                addTarget(previewSurface!!)
             }
 
-            val surfaces = mutableListOf(surface, imageReader!!.surface)
+            val surfaces = mutableListOf(previewSurface!!, imageReader!!.surface)
             
             if (isRawEnabled && bestRawSize != null) {
                 rawImageReader = ImageReader.newInstance(bestRawSize!!.width, bestRawSize!!.height, ImageFormat.RAW_SENSOR, 2)
@@ -1502,7 +1532,6 @@ class MainActivity : AppCompatActivity() {
             // 統一使用官方標準的 TEMPLATE_STILL_CAPTURE 以確保所有鏡頭能成功儲存 JPEG
             val templateType = CameraDevice.TEMPLATE_STILL_CAPTURE
             
-            val previewSurface = viewBinding.viewFinder.surfaceTexture?.let { Surface(it) }
             
             if (isSuperHdrEnabled) {
                 // AUTO 模式下先同步參數以避免黑圖
